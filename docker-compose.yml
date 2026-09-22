@@ -1,0 +1,37 @@
+# 狼人杀 · 聚会助手
+#
+#   docker compose up -d --build     启动（或重建后启动）
+#   docker compose logs -f           看日志
+#   docker compose down              停止（数据保留在 ./data）
+#
+# 数据（SQLite：账号、会话）保存在**本文件旁边的 data/ 目录**，
+# 删掉容器、重建镜像都不会丢账号。
+
+services:
+  werewolf:
+    build: .
+    # 也可以直接用 CI 构建好的镜像（把上面的 build 注释掉，改用下面这行）：
+    # image: ghcr.io/magiczheng/werewolf:latest
+    image: werewolf-party:latest
+    container_name: werewolf
+
+    restart: unless-stopped
+
+    ports:
+      - "3000:3000"
+
+    volumes:
+      # 关键：数据库落在 compose 文件旁的 data/ 里，而不是容器内部。
+      # 容器内路径 /app/data 与 Dockerfile 里的 DB_PATH 保持一致。
+      - ./data:/app/data
+
+    environment:
+      PORT: 3000
+      DB_PATH: /app/data/werewolf.db
+
+      # 公网部署时固定分享链接前缀（二维码里的地址），本地/局域网不需要：
+      # PUBLIC_URL: https://werewolf.example.com
+
+      # 多账号测试模式：会话按标签页隔离 + 播种测试账号 + 跳过确认身份。
+      # 正式使用不要开。
+      # MULTI_ACCOUNT: "1"

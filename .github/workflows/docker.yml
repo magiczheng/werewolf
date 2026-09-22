@@ -1,0 +1,76 @@
+name: Build Docker Image
+
+# 推送到主分支、打版本 tag、或手动触发时构建镜像；
+# PR 只构建不推送，用来验证 Dockerfile 没被改坏。
+on:
+  push:
+    branches: [main, master]
+    tags: ['v*']
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  # 先跑测试：镜像构建不便宜，没必要为了一片红的提交产出镜像
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm test
+
+  build:
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write      # 推送到 GHCR 需要
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # GHCR 要求镜像名全小写，而 github.repository 会保留仓库名原本的大小写。
+      # 仓库名一旦含大写字母，不做这步就会推送失败。
+      - name: 统一镜像名为小写
+        run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: 登录 GitHub 容器镜像仓库
+        # PR 来自 fork 时拿不到可写令牌，那种情况本来就只构建不推送
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: 计算镜像标签
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: 构建并推送
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # 复用上一次构建的层，原生模块那一层不用每次重编
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

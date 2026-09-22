@@ -1,0 +1,17 @@
+# 容器内会重新 npm ci，本机的 node_modules 不能带进去
+# （平台不匹配的原生模块会让 better-sqlite3 直接加载失败）
+node_modules
+
+# 运行时数据不能打进镜像：账号与会话都在里面
+data
+
+# 版本库与 CI 配置对运行没有用处，只会让构建上下文变大
+.git
+.github
+.gitignore
+.dockerignore
+Dockerfile
+docker-compose.yml
+
+*.log
+.DS_Store

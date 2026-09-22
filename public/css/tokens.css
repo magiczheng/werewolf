@@ -1,0 +1,84 @@
+/* 设计令牌：玻璃拟态 · 深空紫
+   全部颜色/圆角/层级集中在此，style.css 只消费不定义。 */
+
+:root {
+  /* ---------- 底色 ---------- */
+  --bg: #0f1020;
+  --bg-deep: #080914;
+  --bg-raise: #161832;
+
+  /* ---------- 文字 ---------- */
+  --ink: #f2f3ff;
+  --ink-2: #b9bed8;
+  --ink-3: #828aa9;
+
+  /* ---------- 强调 ---------- */
+  --accent: #7c5cff;
+  --accent-2: #4dd4ff;
+  --grad: linear-gradient(135deg, #7c5cff 0%, #4dd4ff 100%);
+  --grad-soft: linear-gradient(135deg, rgba(124, 92, 255, .22), rgba(77, 212, 255, .16));
+
+  /* ---------- 语义色 ---------- */
+  --good: #4ade80;
+  --wolf: #ff5470;
+  --gold: #ffc857;
+  --warn: #ffb347;
+
+  /* ---------- 玻璃 ---------- */
+  --glass-bg: rgba(255, 255, 255, .045);
+  --glass-bg-2: rgba(255, 255, 255, .075);
+  --glass-bg-3: rgba(255, 255, 255, .11);
+  --glass-brd: rgba(255, 255, 255, .10);
+  --glass-brd-2: rgba(255, 255, 255, .16);
+  --glass-blur: 20px;
+  --glass-lip: inset 0 1px 0 rgba(255, 255, 255, .10);
+
+  /* ---------- 圆角 ---------- */
+  --r-sm: 10px;
+  --r: 16px;
+  --r-lg: 22px;
+  --r-pill: 999px;
+
+  /* ---------- 阴影 ---------- */
+  --shadow: 0 10px 34px rgba(0, 0, 0, .42);
+  --shadow-lg: 0 18px 50px rgba(0, 0, 0, .55);
+  --glow-accent: 0 6px 26px rgba(124, 92, 255, .38);
+  --glow-wolf: 0 6px 30px rgba(255, 84, 112, .30);
+  --glow-good: 0 6px 30px rgba(74, 222, 128, .22);
+
+  /* ---------- 间距 ---------- */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 22px;
+  --sp-6: 30px;
+
+  /* ---------- 排版 ---------- */
+  /* 不加载任何 Web 字体：中文字体文件动辄数 MB，与「零依赖、可离线」冲突。
+     改为精调系统 CJK 栈，靠字重与字距建立层级。 */
+  --font: -apple-system, BlinkMacSystemFont, "PingFang SC", "HarmonyOS Sans SC",
+          "Noto Sans CJK SC", "Source Han Sans SC", "Microsoft YaHei UI", "Microsoft YaHei",
+          "Hiragino Sans GB", "Segoe UI", Roboto, sans-serif;
+  --font-num: ui-rounded, "SF Pro Rounded", -apple-system, "PingFang SC", system-ui, sans-serif;
+
+  /* ---------- 层级 ---------- */
+  --z-tabbar: 40;
+  --z-toast: 60;
+  --z-modal: 80;
+
+  /* ---------- 安全区（刘海屏 / 手势条） ---------- */
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --tabbar-h: 62px;
+  --tabbar-total: calc(var(--tabbar-h) + var(--safe-bottom));
+}
+
+/* 低动态偏好：关掉所有漂移与脉冲 */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+  }
+}

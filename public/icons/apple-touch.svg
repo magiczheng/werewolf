@@ -1,0 +1,39 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="moon" x1="0.1" y1="0" x2="0.9" y2="1">
+      <stop offset="0" stop-color="#b9a4ff"/>
+      <stop offset="0.5" stop-color="#7c5cff"/>
+      <stop offset="1" stop-color="#4dd4ff"/>
+    </linearGradient>
+    <!-- 光晕做得很淡很散，避免出现可见的圆盘边界 -->
+    <radialGradient id="glow" cx="0.5" cy="0.34" r="0.75">
+      <stop offset="0" stop-color="#7c5cff" stop-opacity="0.30"/>
+      <stop offset="0.55" stop-color="#7c5cff" stop-opacity="0.10"/>
+      <stop offset="1" stop-color="#7c5cff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="bg" x1="0" y1="0" x2="0.6" y2="1">
+      <stop offset="0" stop-color="#171a38"/>
+      <stop offset="1" stop-color="#0a0b18"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景完全不透明：iOS 会把透明区域合成到黑底 -->
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+
+  <!-- 几何狼首：宽间距尖耳 + 内收颧骨 + 尖吻 -->
+  <g transform="translate(256,268) scale(5.6) translate(-32,-32)">
+    <path d="M16 6 L26 19 L32 15.5 L38 19 L48 6 L52.5 29 L44 43 L32 57 L20 43 L11.5 29 Z"
+          fill="url(#moon)"/>
+
+    <!-- 口鼻：把吻部从面部切出来，形成狼的轮廓感 -->
+    <path d="M32 57 L25 44 L32 39 L39 44 Z" fill="#0f1020" fill-opacity="0.34"/>
+
+    <!-- 斜挑的眼睛（比圆眼更凶） -->
+    <path d="M19.5 26.5 L28.5 24.2 L27.6 30.4 L20.2 30.6 Z" fill="#0b0c1a"/>
+    <path d="M44.5 26.5 L35.5 24.2 L36.4 30.4 L43.8 30.6 Z" fill="#0b0c1a"/>
+
+    <!-- 鼻头 -->
+    <path d="M32 41.5 L28.4 45.6 L32 48.4 L35.6 45.6 Z" fill="#0b0c1a" fill-opacity="0.62"/>
+  </g>
+</svg>

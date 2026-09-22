@@ -1,0 +1,27 @@
+{
+  "name": "werewolf-party",
+  "version": "1.0.0",
+  "description": "网页版狼人杀平台 —— 线下聚会用：发牌、阶段流转、计时、投票与结算",
+  "type": "module",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node --watch server/index.js",
+    "dev:multi": "MULTI_ACCOUNT=1 node --watch server/index.js",
+    "test": "node --test test/*.test.js",
+    "icons": "./tools/make-icons.sh"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "better-sqlite3": "^13.0.3",
+    "express": "^4.19.2",
+    "qrcode": "^1.5.3",
+    "socket.io": "^4.7.5"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "socket.io-client": "^4.8.3"
+  }
+}
