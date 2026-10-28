@@ -52,8 +52,8 @@ const NIGHT_ORDER = [
 /** 根据客户端输入构建一份合法的 settings；非法则抛出 Error。 */
 export function buildSettings(input) {
   const playerCount = Number(input.playerCount);
-  if (!Number.isInteger(playerCount) || playerCount < 8 || playerCount > 16) {
-    throw new Error('游戏人数需为 8~16');
+  if (!Number.isInteger(playerCount) || playerCount < 9 || playerCount > 16) {
+    throw new Error('游戏人数需为 9~16');
   }
   const roles = {};
   if (input.roles) {
@@ -127,6 +127,10 @@ export class Room {
     this.night = null;
     this.pendingDay = [];
     this.afterQueue = 'day';
+    // 首日「先竞选警长、后公布死讯」时，昨夜结算出的死亡先暂存在这里，
+    // 等竞选结束再真正扣血、播报、排后续事件（见 _resolveNight / _finishSheriffElection）。
+    this._deferredNightDeaths = null;
+    this._sheriffElectionDone = false;
     this.totalDeaths = 0;
     this.news = [];
     this.newsSeq = 0;
@@ -292,6 +296,8 @@ export class Room {
     this.voteState = null;
     this.night = null;
     this.pendingDay = [];
+    this._deferredNightDeaths = null;
+    this._sheriffElectionDone = false;
     this.gameOver = null;
 
     for (const p of this.players.values()) {
@@ -387,11 +393,22 @@ export class Room {
     if (this.gameOver || this.phase === PHASE.LOBBY) return;
     switch (this.phase) {
       case PHASE.ROLE_REVEAL: this._enterNight(); break;
+      // 夜间每个角色行动完先播一句「请闭眼」，再进入下一位的「请睁眼」。
+      // 这句话本身不改变规则，但它是线下法官口播里必不可少的仪式感：
+      // 没有它，语音会把「狼人请睁眼」和「女巫请睁眼」连成一串，
+      // 桌上的人还没闭眼，下一位就已经睁眼了。
       case PHASE.NIGHT_GUARD:
-      case PHASE.NIGHT_WOLVES:
-      case PHASE.NIGHT_WITCH:
+        this._news('守卫请闭眼');
         this._startNextNightPhase(); break;
-      case PHASE.NIGHT_SEER: this._resolveNight(); break;
+      case PHASE.NIGHT_WOLVES:
+        this._news('狼人请闭眼');
+        this._startNextNightPhase(); break;
+      case PHASE.NIGHT_WITCH:
+        this._news('女巫请闭眼');
+        this._startNextNightPhase(); break;
+      case PHASE.NIGHT_SEER:
+        this._news('预言家请闭眼');
+        this._resolveNight(); break;
       case PHASE.DAY_START:
       case PHASE.LAST_WORDS:
       case PHASE.HUNTER_SHOOT:
@@ -692,22 +709,48 @@ export class Room {
     // （先前是「昨夜是平安夜」出现在「天亮了」之前）。
     this._startPhase(PHASE.DAY_START);
 
-    if (!unique.length) {
-      this._news('昨夜是平安夜');
+    // 首日按面杀主流：先竞选警长，竞选结束再公布昨夜死讯。
+    // 此时暂不扣血，昨夜死者仍可参加竞选——线下他们这时确实还不知道自己已死。
+    if (this.day === 1 && this.settings.rules.sheriffBeforeDeath) {
+      this._deferredNightDeaths = unique;
+      this._news('首日先进行警长竞选，竞选结束后公布昨夜死讯');
     } else {
-      for (const d of unique) {
-        const p = this._playerAt(d.seat);
-        p.alive = false;
-        this.totalDeaths++;
-        this._news(`${d.seat}号 在昨夜死亡`);
-        this._queueDeathEvents(d);
-      }
+      this._applyNightDeaths(unique);
+      if (this._checkVictory()) { this.touch(); return; }
     }
 
-    if (this._checkVictory()) { this.touch(); return; }
     // 昨夜结果是在 _startPhase 之后才写进 news 的，必须再广播一次：
     // 否则客户端停留在「天亮了」那一版快照上，根本看不到平安夜/死亡播报。
     this.touch();
+  }
+
+  /** 把「昨夜结果」真正写入状态并播报；首日延迟结算与其它夜晚共用这一段。 */
+  _applyNightDeaths(deaths) {
+    if (!deaths.length) {
+      this._news('昨夜是平安夜');
+      return;
+    }
+    for (const d of deaths) {
+      const p = this._playerAt(d.seat);
+      if (!p || !p.alive) continue;   // 幂等：已经因其它原因出局的人不重复结算
+      p.alive = false;
+      this.totalDeaths++;
+      this._news(`${d.seat}号 在昨夜死亡`);
+      this._queueDeathEvents(d);
+    }
+  }
+
+  /**
+   * 首日竞选结束 → 公布昨夜死讯。
+   * @returns {boolean} 是否确实有被延迟的结算
+   */
+  _flushDeferredNightDeaths() {
+    if (!this._deferredNightDeaths) return false;
+    const deaths = this._deferredNightDeaths;
+    this._deferredNightDeaths = null;
+    this._applyNightDeaths(deaths);
+    this._checkVictory();
+    return true;
   }
 
   /**
@@ -757,8 +800,19 @@ export class Room {
         continue;
       }
     }
-    if (this.afterQueue === 'night') { this._enterNight(); return; }
-    if (this.day === 1) { this._startPhase(PHASE.SHERIFF_DECLARE); return; }
+    if (this.afterQueue === 'night') {
+      // 理论上首日死讯不会拖到天黑还没公布；这里兜底，避免延迟结算被吞掉。
+      this._flushDeferredNightDeaths();
+      if (this.gameOver) return;
+      // 延迟结算可能新排入猎人开枪 / 警徽移交，必须先处理完再进夜。
+      if (this.pendingDay.length) { this._processQueue(); return; }
+      this._enterNight();
+      return;
+    }
+    if (this.day === 1 && !this._sheriffElectionDone) {
+      this._startPhase(PHASE.SHERIFF_DECLARE);
+      return;
+    }
     this._startPhase(PHASE.DAY_TALK);
   }
 
@@ -889,13 +943,27 @@ export class Room {
     this.sheriff = seat;
     this._news(`${seat}号 当选警长`);
     this.sheriffState = null;
-    this._startPhase(PHASE.DAY_TALK);
+    this._finishSheriffElection();
   }
 
   _noSheriff(reason) {
     this._news(reason || '无人当选警长，本局无警长');
     this.sheriffState = null;
-    this._startPhase(PHASE.DAY_TALK);
+    this._finishSheriffElection();
+  }
+
+  /**
+   * 首日警长竞选结束：公布昨夜死讯，再处理由死讯引出的后续事件
+   * （猎人开枪 / 警徽移交），最后进入白天发言。
+   *
+   * 注意顺序：先 set sheriff 再 flush，这样「昨夜死的人恰好当选警长」时，
+   * _queueDeathEvents 能看到新的 sheriff 并把警徽移交排进队列。
+   */
+  _finishSheriffElection() {
+    this._sheriffElectionDone = true;
+    this._flushDeferredNightDeaths();
+    if (this.gameOver) { this.touch(); return; }
+    this._processQueue();
   }
 
   // ---------- 白天：放逐投票 ----------
@@ -1037,6 +1105,15 @@ export class Room {
     if (!p.alive) return { error: '你已出局' };
     if (!this._blastAllowed()) return { error: '只能在白天的发言 / 讨论 / 投票阶段自爆' };
 
+    // 首日先竞选时，昨夜死讯还没公布。狼人若在警长竞选期间自爆，
+    // 必须先公布死讯（面杀规则里的「自爆吞警徽」也要求先报死讯），
+    // 否则延迟结算会跟着竞选一起被丢掉。
+    if (this._deferredNightDeaths) {
+      this._flushDeferredNightDeaths();
+      if (this.gameOver) return { error: '游戏已结束' };
+      if (!p.alive) return { error: '你已出局' };
+    }
+
     const isKing = p.role === 'whiteWolfKing';
     let victim = null;
     if (isKing) {
@@ -1061,8 +1138,8 @@ export class Room {
     this.sheriffState = null;
 
     // 自爆者不留遗言；当天白天立刻结束，直接进入黑夜。
-    // 只保留警徽移交——警长被炸死时徽章仍要处理。
-    this.pendingDay = [];
+    // 保留 pendingDay：首日先竞选时，上面 flush 可能刚排入昨夜死者的
+    // 猎人开枪 / 警徽移交，这些必须处理完才能进夜。
     this.afterQueue = 'night';
     for (const seat of [p.seat, victim].filter(Boolean)) {
       if (this.sheriff === seat) this.pendingDay.push({ type: 'sheriffHandoff', seat });
@@ -1275,6 +1352,8 @@ export class Room {
     this.voteState = null;
     this.night = null;
     this.pendingDay = [];
+    this._deferredNightDeaths = null;
+    this._sheriffElectionDone = false;
     this.news = [];
     this.totalDeaths = 0;
     for (const p of this.players.values()) {

@@ -4,6 +4,8 @@ const io = window.io;
 let socket = null;
 let state = null;
 const listeners = new Set();
+let syncTimer = null;     // 唤醒后向服务端要快照的等待计时器
+let lastPoke = 0;         // 防止 focus / visibilitychange 同时触发两次探测
 
 // ---------- 会话存储 ----------
 // 服务端权威：玩家身份 = 账号 game_id。token 仅用于恢复会话。
@@ -75,6 +77,11 @@ function sessionToken() {
   return store.get(KEY.token);
 }
 
+/** 清空本地会话（服务端 token 失效时用）：界面会回到登录页。 */
+export function clearSession() {
+  saveSession(null);
+}
+
 /** 当前登录账号信息（可能为 null）。 */
 export function session() {
   const email = store.get(KEY.email);
@@ -90,16 +97,26 @@ export const net = {
   connect() {
     socket = io({
       reconnection: true,
+      reconnectionAttempts: Infinity,
       reconnectionDelay: 500,
-      reconnectionDelayMax: 2500,
-      auth: { token: sessionToken() },
+      reconnectionDelayMax: 3000,
+      timeout: 10000,
+      // 关键：auth 必须是函数，Socket.IO 每次（重）连都会重新调用它。
+      // 之前写成 `auth: { token: sessionToken() }`，只在页面加载时取一次；
+      // 登录后再断线重连，携带的仍是登录前的空 token，服务端认不出人，
+      // 表现就是「手机一锁屏，回来就得重新登录」。
+      auth: (cb) => cb({ token: sessionToken() }),
     });
 
     socket.on('state', (s) => {
       state = s;
       listeners.forEach((fn) => fn(s, 'state'));
     });
-    socket.on('connect', () => listeners.forEach((fn) => fn(null, 'connect')));
+    socket.on('connect', () => {
+      clearTimeout(syncTimer);
+      syncTimer = null;
+      listeners.forEach((fn) => fn(null, 'connect'));
+    });
     socket.on('disconnect', () => listeners.forEach((fn) => fn(null, 'disconnect')));
     socket.on('connect_error', () => {});
   },
@@ -110,9 +127,19 @@ export const net = {
     return () => listeners.delete(fn);
   },
 
-  emit(event, payload = {}) {
+  emit(event, payload = {}, timeoutMs = 10000) {
     return new Promise((resolve, reject) => {
+      if (!socket) { reject(new Error('尚未连接')); return; }
+      let done = false;
+      const timer = setTimeout(() => {
+        if (done) return;
+        done = true;
+        reject(new Error('服务器无响应，请检查网络'));
+      }, timeoutMs);
       socket.emit(event, payload, (res) => {
+        if (done) return;
+        done = true;
+        clearTimeout(timer);
         if (res && res.error) reject(new Error(res.error));
         else resolve(res || {});
       });
@@ -153,6 +180,61 @@ export const net = {
     saveSession(null);
   },
 };
+
+// ---------- 手机息屏 / 切后台后的连接恢复 ----------
+// Socket.IO 自带重连，但移动端有两个额外问题：
+//   1. 系统冻结页面时，重连定时器也一起被冻结；解锁后不一定马上重连。
+//   2. 页面恢复时 socket.connected 可能仍是 true（TCP 已经死了但还没超时），
+//      表现为「看起来在线，实际收不到任何推送」。
+// 因此：可见 / 联网 / 回到前台时主动探活；探活超时就强制重建连接。
+
+function forceReconnect() {
+  if (!socket) return;
+  clearTimeout(syncTimer);
+  syncTimer = null;
+  try { if (typeof socket.disconnect === 'function') socket.disconnect(); } catch (_e) { /* 忽略 */ }
+  try { if (typeof socket.connect === 'function') socket.connect(); } catch (_e) { /* 忽略 */ }
+}
+
+function pokeConnection() {
+  if (!socket) return;
+  if (!socket.connected) { forceReconnect(); return; }
+
+  // 多个事件常常一起到达（pageshow + visibilitychange + focus），只探一次。
+  // lastPoke 为 0 表示还没探过，不能拿它做差（否则时钟从 0 起算时会漏掉第一次）。
+  const now = Date.now();
+  if (lastPoke && now - lastPoke < 1500) return;
+  lastPoke = now;
+
+  if (typeof socket.emit !== 'function') return;
+  clearTimeout(syncTimer);
+  // 服务端收到 sync 会把当前房间快照重新推一遍；5 秒没有回应就认为连接是僵尸。
+  syncTimer = setTimeout(() => {
+    syncTimer = null;
+    forceReconnect();
+  }, 5000);
+  try {
+    socket.emit('sync', {}, () => {
+      clearTimeout(syncTimer);
+      syncTimer = null;
+    });
+  } catch (_e) {
+    clearTimeout(syncTimer);
+    syncTimer = null;
+    forceReconnect();
+  }
+}
+
+if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+  window.addEventListener('online', pokeConnection);
+  window.addEventListener('pageshow', pokeConnection);
+  window.addEventListener('focus', pokeConnection);
+}
+if (typeof document !== 'undefined' && typeof document.addEventListener === 'function') {
+  document.addEventListener('visibilitychange', () => {
+    if (!document.hidden) pokeConnection();
+  });
+}
 
 /** 本地持久化的玩家身份（服务端对已登录连接一律用账号 gameId 覆盖）。 */
 export function playerId() {

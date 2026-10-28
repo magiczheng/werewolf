@@ -14,7 +14,6 @@ export const ROLE_META = {
 export const ROLE_KEYS = ['wolf', 'whiteWolfKing', 'villager', 'seer', 'witch', 'hunter', 'guard', 'idiot'];
 
 export const DEFAULT_BOARDS = {
-  8: { wolf: 3, villager: 2, seer: 1, witch: 1, hunter: 1 },
   9: { wolf: 3, villager: 3, seer: 1, witch: 1, hunter: 1 },   // 主流配置：3 狼 + 3 神（预言家/女巫/猎人）+ 3 民，不含守卫
   10: { wolf: 3, villager: 3, seer: 1, witch: 1, hunter: 1, guard: 1 },
   11: { wolf: 4, villager: 3, seer: 1, witch: 1, hunter: 1, guard: 1 },
@@ -25,7 +24,7 @@ export const DEFAULT_BOARDS = {
   16: { wolf: 5, villager: 6, seer: 1, witch: 1, hunter: 1, guard: 1, idiot: 1 },
 };
 
-export const PLAYER_COUNTS = [8, 9, 10, 11, 12, 13, 14, 15, 16];
+export const PLAYER_COUNTS = [9, 10, 11, 12, 13, 14, 15, 16];
 
 /** 创建房间时预选的人数（板子取 DEFAULT_BOARDS[此值]）。 */
 export const DEFAULT_PLAYER_COUNT = 9;   // 主流起点是 9 人局（3 狼 + 3 神 + 3 民）
@@ -33,6 +32,7 @@ export const DEFAULT_PLAYER_COUNT = 9;   // 主流起点是 9 人局（3 狼 + 3
 export const DEFAULT_RULES = {
   firstNightWitchSelfHeal: true,
   guardWitchConflict: false,
+  sheriffBeforeDeath: true,
   killSide: true,
   revealOnExile: false,
 };
@@ -40,6 +40,7 @@ export const DEFAULT_RULES = {
 export const RULES_LABELS = [
   ['firstNightWitchSelfHeal', '女巫首夜可自救'],
   ['guardWitchConflict', '守救相克（守+救同人则死亡）'],
+  ['sheriffBeforeDeath', '首日先竞选警长，再公布死讯（面杀主流）'],
   ['killSide', '屠边规则（杀光神职或平民即狼胜；关闭则改为屠城）'],
   ['revealOnExile', '被放逐的玩家翻牌公开身份'],
 ];

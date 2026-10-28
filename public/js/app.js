@@ -68,12 +68,17 @@ export const app = {
 
 // 连接状态：顶部细条提示断线，恢复后自动消失
 export function wireConnectionBanner() {
+  let wasOffline = false;
   net.on((_s, type) => {
     if (type === 'disconnect') {
+      wasOffline = true;
       document.body.classList.add('offline');
       toast('连接已断开，正在重连…', true);
     } else if (type === 'connect') {
       document.body.classList.remove('offline');
+      // 首次连接不提示；只有「断过又回来」才值得说一句
+      if (wasOffline) toast('已重新连接');
+      wasOffline = false;
     }
   });
 }

@@ -200,16 +200,32 @@ export function installDom(opts = {}) {
   }
   doc._byId = roots;
 
-  // 伪 socket：记录事件处理器，便于测试注入服务端推送
+  // 伪 socket：记录事件处理器与连接参数，便于测试注入服务端推送。
+  // emit 默认立即 ack（{ok:true}），等价于服务端已收到；个别测试可自行覆盖。
   const sockets = [];
-  const makeSocket = () => {
+  const makeSocket = (opts = {}) => {
     const handlers = {};
     const sock = {
+      opts,
       handlers,
+      emitted: [],
       connected: true,
       on(type, fn) { (handlers[type] ||= []).push(fn); },
-      emit() {},
-      close() {},
+      emit(event, payload, cb) {
+        sock.emitted.push({ event, payload });
+        if (typeof cb === 'function') cb({ ok: true });
+      },
+      disconnect() {
+        if (!sock.connected) return;
+        sock.connected = false;
+        sock.fire('disconnect', 'io client disconnect');
+      },
+      connect() {
+        if (sock.connected) return;
+        sock.connected = true;
+        sock.fire('connect');
+      },
+      close() { sock.connected = false; },
       fire(type, ...args) { for (const fn of handlers[type] || []) fn(...args); },
     };
     sockets.push(sock);
@@ -224,9 +240,18 @@ export function installDom(opts = {}) {
   const spoken = [];
   const speechStub = {
     spoken,
+    speaking: false,
+    paused: false,
     getVoices: () => [{ name: 'Test 中文语音', lang: 'zh-CN' }],
-    speak: (u) => { spoken.push(u.text); },
+    speak: (u) => {
+      // 0 音量是「手势解锁」用的空语音，不算播报内容。
+      if (u.volume !== 0) spoken.push(u.text);
+      // 模拟异步 onend，让逐句队列能继续往下走。
+      setTimeout(() => { if (typeof u.onend === 'function') u.onend(); }, 0);
+    },
     cancel: () => {},
+    resume: () => {},
+    pause: () => {},
     addEventListener: () => {},
   };
 
@@ -235,6 +260,7 @@ export function installDom(opts = {}) {
     isSecureContext: false,
     // 服务端以 MULTI_ACCOUNT=1 启动时注入；默认 false，与生产行为一致
     __WW_MULTI__: !!opts.multi,
+    __WW_TEST__: true,
     scrollTo() {},
     location: { origin: 'http://localhost:3000', search: '', href: 'http://localhost:3000/' },
     navigator: { userAgent: 'node', serviceWorker: undefined },
@@ -248,7 +274,12 @@ export function installDom(opts = {}) {
 
   if (opts.speech) {
     win.speechSynthesis = speechStub;
-    win.SpeechSynthesisUtterance = function SpeechSynthesisUtterance(text) { this.text = text; };
+    win.SpeechSynthesisUtterance = function SpeechSynthesisUtterance(text) {
+      this.text = text;
+      this.volume = 1;
+      this.onend = null;
+      this.onerror = null;
+    };
   }
 
   globalThis.window = win;

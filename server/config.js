@@ -12,6 +12,10 @@
 export const DEFAULT_RULES = {
   firstNightWitchSelfHeal: true, // 女巫首夜可自救
   guardWitchConflict: false,     // false=守救同盾平安夜；true=守救相克（目标死亡）
+  // 首日顺序（面杀主流）：先竞选警长，竞选结束后再公布昨夜死讯。
+  // 关闭后改为「先公布死讯，再竞选警长」（部分网杀流程）。
+  // 开启时，昨夜死者仍可参加首日警长竞选——线下他们此时还不知道自己已死。
+  sheriffBeforeDeath: true,
   sheriffVoteWeight: 1.5,        // 警长票权重（实现上乘2缩放：普通=2、警长=3）
   // 屠边规则（默认开，主流玩法）：
   //   true  —— 狼人杀光所有「神职」或杀光所有「平民」即获胜（屠边）

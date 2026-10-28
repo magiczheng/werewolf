@@ -9,7 +9,7 @@ import { peekButton, hidePeek } from '../components/rolePeek.js';
 import { newsPanel } from '../components/news.js';
 import { judgePanel } from '../components/judgePanel.js';
 import {
-  speakNew, resetVoice, isNarrator,
+  speakNew, resetVoice, isNarrator, unlock as unlockVoice,
   enabled as voiceOn, setEnabled as setVoice,
   supported as voiceSupported, voiceName,
 } from '../speech.js';
@@ -579,6 +579,11 @@ export function renderGame(root) {
           (voiceSupported() && isNarrator(s)) ? voiceToggle(s) : null,
         ]),
         newsPanel(s),
+        // 解说员设备若不支持语音合成（常见于微信等 App 内置浏览器），
+        // 明确提示换系统浏览器——否则用户只会觉得「手机上没声音」。
+        (isNarrator(s) && !voiceSupported())
+          ? el('div', { class: 'hint bad-text' }, '当前浏览器不支持语音播报，请用 Safari / Chrome 等系统浏览器打开')
+          : null,
       ]),
     ]),
   };
@@ -628,7 +633,9 @@ function voiceToggle(s) {
   const btn = el('button', {
     class: 'voice-toggle', type: 'button',
     click: () => {
-      setVoice(!voiceOn());   // 立即生效，不需要等服务端
+      const on = !voiceOn();
+      setVoice(on);           // 立即生效，不需要等服务端
+      if (on) unlockVoice();  // 这次点击本身就是移动端需要的手势
       paint(btn);
     },
   });

@@ -1,5 +1,5 @@
 // 启动：连接、渲染、断线自动重连回房间、Service Worker 注册
-import { net, session, playerName, store, multiAccount } from './net.js';
+import { net, session, playerName, store, multiAccount, clearSession } from './net.js';
 import { app, wireConnectionBanner } from './app.js';
 import { toast } from './ui.js';
 
@@ -13,21 +13,42 @@ wireConnectionBanner();
 // 这里先同步渲染一帧（登录卡片只依赖 localStorage 中的会话），再建立连接。
 app.render();
 
-net.connect();
-
 // 刷新页面 / 断线重连：自动回到之前所在房间
 // （服务端以账号身份恢复座位与角色，所以换设备也能回到原位）
-net.on((_s, type) => {
+//
+// 必须注册在 net.connect() 之前：否则连接建立得太快时，第一次 connect
+// 事件可能在监听器挂上之前就错过了，用户会停在首页。
+let rejoining = false;
+net.on(async (_s, type) => {
   if (type !== 'connect') return;
   if (!session()) return; // 未登录不自动重连，首页会显示登录卡片
   const code = store.get('ww_last_room');
-  if (!code) return;
-  net.emit('joinRoom', { code, name: playerName() || session().name })
-    .catch((e) => {
-      store.remove('ww_last_room');
-      toast(/登录/.test(e.message) ? '登录已失效，请重新登录' : '房间已失效，请重新加入', true);
-    });
+  if (!code || rejoining) return;
+  rejoining = true;
+  try {
+    await net.emit('joinRoom', { code, name: playerName() || session().name });
+  } catch (e) {
+    // 网络抖动导致的超时不作数：保留房间记录，下一次连接恢复时再试。
+    if (/无响应|网络/.test(e.message)) {
+      toast('网络不稳定，恢复后会自动回到房间', true);
+      return;
+    }
+    store.remove('ww_last_room');
+    if (/登录|身份/.test(e.message)) {
+      // 服务端明确不认这个会话：本地也必须退出，否则界面会假装还登录着。
+      clearSession();
+      net.clear();
+      toast('登录已失效，请重新登录', true);
+    } else {
+      net.clear();
+      toast(/房间不存在/.test(e.message) ? '房间已失效，请重新加入' : e.message, true);
+    }
+  } finally {
+    rejoining = false;
+  }
 });
+
+net.connect();
 
 // 多账号测试模式：角标提示，避免误以为会话行为异常
 if (multiAccount) {

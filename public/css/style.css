@@ -156,6 +156,9 @@ body::after {
   border: 1px solid var(--glass-brd);
   border-radius: var(--r);
   padding: 16px;
+  /* 同上：渐变背景不按 border-box 定位会在边框处露出平铺回卷的边 */
+  background-origin: border-box;
+  background-repeat: no-repeat;
   box-shadow: var(--shadow), var(--glass-lip);
 }
 
@@ -232,6 +235,13 @@ button {
   border: 1px solid var(--glass-brd);
   border-radius: var(--r-sm);
   background: var(--glass-bg-2);
+  /* 渐变背景必须按 border-box 定位。
+     默认是 padding-box + repeat：渐变图按「内边距盒子」的尺寸生成，再去平铺盖住
+     大 1px 的边框盒子，于是边缘那 1px 会露出「上一块瓦片」的末端颜色。
+     --grad 是 135deg 紫→青、末端为青色，看起来就是左侧一条蓝色竖条；
+     开关（.switch.on 同样用 --grad）边缘的溢出也是同一个原因。 */
+  background-origin: border-box;
+  background-repeat: no-repeat;
   padding: 12px 18px;
   min-height: 44px;                     /* 触控目标下限 */
   cursor: pointer;

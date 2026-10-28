@@ -82,7 +82,6 @@ export const GOD_ROLES = ['seer', 'witch', 'hunter', 'guard', 'idiot'];
 // 默认板子：8~16 人
 // 结构：{ roles: {roleId: count} }
 export const DEFAULT_BOARDS = {
-  8:  { roles: { wolf: 3, villager: 2, seer: 1, witch: 1, hunter: 1 } },
   // 9 人局用主流配置：3 狼 + 3 神（预言家/女巫/猎人）+ 3 民，不含守卫
   9:  { roles: { wolf: 3, villager: 3, seer: 1, witch: 1, hunter: 1 } },
   10: { roles: { wolf: 3, villager: 3, seer: 1, witch: 1, hunter: 1, guard: 1 } },
