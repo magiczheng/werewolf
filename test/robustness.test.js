@@ -32,7 +32,7 @@ function prototypeMethods(cls) {
 }
 
 test('Room 的实例字段不得与原型方法同名（会静默遮蔽方法）', () => {
-  const settings = buildSettings({ playerCount: 8 });
+  const settings = buildSettings({ playerCount: 9 });
   const room = new Room({
     code: 'T', settings, hostPlayerId: 'H', hostName: '房主', onChange() {},
   });
@@ -45,7 +45,7 @@ test('Room 的实例字段不得与原型方法同名（会静默遮蔽方法）
 });
 
 test('事故方法已彻底移除，同类遮蔽不可能再发生', () => {
-  const settings = buildSettings({ playerCount: 8 });
+  const settings = buildSettings({ playerCount: 9 });
   const room = new Room({
     code: 'T', settings, hostPlayerId: 'H', hostName: '房主', onChange() {},
   });
@@ -58,11 +58,11 @@ test('事故方法已彻底移除，同类遮蔽不可能再发生', () => {
 // ---------- 2. 遗言流程可用 ----------
 
 test('遗言阶段：遗言者点结束即推进，别人不行', () => {
-  const settings = buildSettings({ playerCount: 8 });
+  const settings = buildSettings({ playerCount: 9 });
   const room = new Room({
     code: 'T', settings, hostPlayerId: 'H', hostName: '房主', onChange() {},
   });
-  for (let i = 2; i <= 8; i++) { room.addPlayer(`p${i}`, `玩家${i}`); room.sit(`p${i}`, i); }
+  for (let i = 2; i <= 9; i++) { room.addPlayer(`p${i}`, `玩家${i}`); room.sit(`p${i}`, i); }
   room.sit('HOST', 1);
   room.start();
   for (const p of room._livePlayers()) room.roleConfirm(p.playerId);
@@ -92,7 +92,7 @@ test('socket 处理器抛错被隔离，进程存活且客户端收到错误应�
 
   const call = (ev, payload) => new Promise((r) => s.emit(ev, payload, r));
   await call('register', { email: 'boom@t.dev', password: 'pwd123456', name: '测试' });
-  await call('createRoom', { name: '测试', settings: { playerCount: 8 } });
+  await call('createRoom', { name: '测试', settings: { playerCount: 9 } });
   await call('sit', { seat: 1 });
 
   // 制造一个必然抛错的处理器：把引擎方法临时换成会抛的实现。

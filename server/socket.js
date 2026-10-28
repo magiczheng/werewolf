@@ -241,6 +241,14 @@ export function initSocket(server, opts = {}) {
       ok(cb);
     }));
 
+    // 手机解锁 / 切回前台时的轻量探活：把当前房间快照重新推一遍。
+    // 客户端若 5 秒收不到 ack，就判定连接已僵死并强制重连（见 net.js）。
+    on('sync', withCb((_p, cb) => {
+      const room = roomOf();
+      if (room) socket.emit('state', room.snapshot(socket.data.playerId));
+      ok(cb);
+    }));
+
     on('leaveRoom', withCb((_p, cb) => {
       const room = roomOf();
       if (room) {

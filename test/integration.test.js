@@ -213,11 +213,11 @@ test('法官模式：法官可见全部身份，普通玩家仅知自己', { tim
   await registerClient(judge, 'judge@t.io', '法官');
   const created = await emitAck(judge.s, 'createRoom', {
     name: '法官',
-    settings: { playerCount: 8, judgeMode: true },
+    settings: { playerCount: 9, judgeMode: true },
   });
   const roomCode = created.roomCode;
   const others = [];
-  for (let i = 1; i <= 8; i++) {
+  for (let i = 1; i <= 9; i++) {
     const c = connectClient();
     await c.connected;
     await registerClient(c, `j${i}@t.io`, `玩家${i}`);
@@ -231,14 +231,14 @@ test('法官模式：法官可见全部身份，普通玩家仅知自己', { tim
   // 法官快照带全部角色
   const js = judge.latest;
   assert.ok(js.judge && Array.isArray(js.judge.players));
-  assert.equal(js.judge.players.filter(p => p.role).length, 8, '法官看到全部身份');
+  assert.equal(js.judge.players.filter(p => p.role).length, 9, '法官看到全部身份');
   assert.equal(js.me.isJudge, true);
 
   // 普通玩家无完整法官态
   assert.ok(!others[0].latest.judge.players, '普通玩家无法官面板');
   assert.equal(others[0].latest.me.role, others[0].latest.me.role);
 
-  // 法官手动推进（8人板子无守卫 → 首夜从狼人开始）
+  // 法官手动推进（9 人板子无守卫 → 首夜从狼人开始）
   await emitAck(judge.s, 'judge', { cmd: 'advance' });
   await isPhase(judge, 'nightWolves');
   // 普通玩家不能推进
@@ -254,13 +254,13 @@ test('断线重连：同一账号 token 回到原座位与身份', { timeout: 20
   await registerClient(host, 'host2@t.io', '房主');
   const created = await emitAck(host.s, 'createRoom', {
     name: '房主',
-    settings: { playerCount: 8, judgeMode: false },
+    settings: { playerCount: 9, judgeMode: false },
   });
   const roomCode = created.roomCode;
-  // 8 人满房：host 坐 1 号，b 坐 2 号（作为重连对象），其余 6 人
+  // 9 人满房：host 坐 1 号，b 坐 2 号（作为重连对象），其余 7 人
   let b = null, bToken = '';
   const others = [];
-  for (let i = 2; i <= 8; i++) {
+  for (let i = 2; i <= 9; i++) {
     const c = connectClient();
     await c.connected;
     const email = i === 2 ? 'b@t.io' : `r${i}@t.io`;
@@ -285,6 +285,12 @@ test('断线重连：同一账号 token 回到原座位与身份', { timeout: 20
   assert.equal(st.me.role, roleBefore, '重连后身份不变');
   assert.equal(st.me.seat, 2, '重连后座位保留');
 
+  // 手机解锁 / 切回前台：sync 应立刻回推一份快照，客户端以此判断连接是否僵死
+  let syncStates = 0;
+  b2.s.on('state', () => { syncStates++; });
+  await emitAck(b2.s, 'sync', {});
+  assert.ok(syncStates >= 1, 'sync 必须回推当前房间快照');
+
   host.close();
   b2.close();
   others.forEach(c => c.close());
@@ -295,7 +301,7 @@ test('强制登录：未登录不能创建房间，登出后即失效', { timeou
   const guest = connectClient();
   await guest.connected;
   await assert.rejects(
-    emitAck(guest.s, 'createRoom', { name: '游客', settings: { playerCount: 8, judgeMode: false } }),
+    emitAck(guest.s, 'createRoom', { name: '游客', settings: { playerCount: 9, judgeMode: false } }),
     /请先登录/
   );
   await assert.rejects(
@@ -305,13 +311,13 @@ test('强制登录：未登录不能创建房间，登出后即失效', { timeou
 
   // 注册后可创建
   await registerClient(guest, 'auth1@t.io', '小甲');
-  const created = await emitAck(guest.s, 'createRoom', { name: '小甲', settings: { playerCount: 8, judgeMode: false } });
+  const created = await emitAck(guest.s, 'createRoom', { name: '小甲', settings: { playerCount: 9, judgeMode: false } });
   assert.ok(/^[A-Z0-9]{6}$/.test(created.roomCode));
 
   // 登出后再创建被拒
   await emitAck(guest.s, 'logout', {});
   await assert.rejects(
-    emitAck(guest.s, 'createRoom', { name: '小甲', settings: { playerCount: 8, judgeMode: false } }),
+    emitAck(guest.s, 'createRoom', { name: '小甲', settings: { playerCount: 9, judgeMode: false } }),
     /请先登录/
   );
 
@@ -325,7 +331,7 @@ test('强制登录：未登录不能创建房间，登出后即失效', { timeou
   const stale = connectClient({ auth: { token } });
   await stale.connected;
   await assert.rejects(
-    emitAck(stale.s, 'createRoom', { name: '小乙', settings: { playerCount: 8, judgeMode: false } }),
+    emitAck(stale.s, 'createRoom', { name: '小乙', settings: { playerCount: 9, judgeMode: false } }),
     /请先登录/
   );
 

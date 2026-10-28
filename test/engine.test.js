@@ -139,6 +139,15 @@ function drainToDayTalk(room) {
   }
 }
 
+/**
+ * 首日全员退水 → 无人上警 → 警徽流失 → 公布昨夜死讯。
+ * 返回时可能停在 dayTalk，也可能因死者是猎人/警长而进入开枪/移交警徽。
+ */
+function skipSheriff(room) {
+  if (room.phase !== 'sheriffDeclare') return;
+  for (const p of room._livePlayers()) room.setDeclaration(p.playerId, false);
+}
+
 function allExileVote(room, target) {
   for (const p of room._voteEligible()) {
     // 不能投给自己（引擎的新规则）：目标本人只能弃票。
@@ -149,8 +158,8 @@ function allExileVote(room, target) {
 
 // ---------- 测试 ----------
 
-test('默认板子：8~16 人全部合法且人数匹配', () => {
-  for (let n = 8; n <= 16; n++) {
+test('默认板子：9~16 人全部合法且人数匹配', () => {
+  for (let n = 9; n <= 16; n++) {
     const b = defaultBoardFor(n);
     assert.equal(validateRoles(b, n), null);
     assert.equal(Object.values(b).reduce((a, c) => a + c, 0), n);
@@ -185,7 +194,7 @@ test('开局发牌：角色数量与配置一致，每位玩家仅知自己身�
 
 test('完整自动对局：好人阵营获胜（狼人全部出局）', () => {
   seedRandom(7);
-  const room = setupRoom(8); // 3狼 + 预言家 + 女巫 + 猎人 + 2民
+  const room = setupRoom(9); // 3狼 + 预言家 + 女巫 + 猎人 + 2民
   room.start();
   assert.equal(room.phase, 'roleReveal');
   confirmRoles(room);
@@ -233,23 +242,34 @@ test('完整自动对局：好人阵营获胜（狼人全部出局）', () => {
   restoreRandom();
 });
 
-test('狼人获胜：好人数量被狼人追平/反超', () => {
+test('狼人获胜：屠边（杀光所有平民）', () => {
   seedRandom(3);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   confirmRoles(room);
 
-  // 夜1：狼刀好人，女巫不用药 → 死亡
-  const kill = nonHunterGood(room)[0];
-  playNight(room, { wolfTarget: kill, seerTarget: wolfSeats(room)[0] });
-  assert.equal(room._playerAt(kill).alive, false);
-  drainToDayTalk(room);
+  // 9 人板子是 3 狼 + 3 平民 + 3 神，按**屠边**规则：杀光平民（或神职）即狼胜。
+  // 这里专门走「屠光平民」这条路。
+  const villagers = () => room._livePlayers().filter(p => p.role === 'villager');
+  assert.equal(villagers().length, 3, '前提：3 名平民');
 
-  // 白天1：放逐一名好人 → 3狼 vs 3好 → 狼胜
-  const victim = nonHunterGood(room)[0];
+  // 夜1：刀一个平民 → 还剩 2
+  playNight(room, { wolfTarget: villagers()[0].seat, seerTarget: wolfSeats(room)[0] });
+  drainToDayTalk(room);
+  assert.equal(villagers().length, 2);
+
+  // 白天1：放逐一个平民 → 还剩 1（此时神职一个没少，不该判狼胜）
   room.advance();
-  allExileVote(room, victim);
-  assert.equal(room.gameOver && room.gameOver.winners, 'wolf');
+  allExileVote(room, villagers()[0].seat);
+  assert.ok(!room.gameOver, '只死平民而神职尚存时不该结束');
+  drainToDayTalk(room);
+  assert.equal(villagers().length, 1, '还剩最后一个平民');
+
+  // 夜2：刀掉最后一个平民 → 平民全灭 → 屠边成立，狼胜。
+  // 注意不要传 seerTarget：预言家不能重复验同一人，验不动的话这一夜永远结算不了。
+  playNight(room, { wolfTarget: villagers()[0].seat });
+  assert.ok(room.gameOver, '杀光平民应立即判定胜负');
+  assert.equal(room.gameOver.winners, 'wolf', '屠边成立 → 狼人胜');
   assert.equal(room.phase, 'gameOver');
   restoreRandom();
 });
@@ -315,7 +335,7 @@ test('警长 1.5 票影响放逐结果（避免平票）', () => {
 
 test('放逐平票进入 PK，PK 仍平则平安日', () => {
   seedRandom(15);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   confirmRoles(room);
   const kill = nonHunterGood(room)[0];
@@ -351,10 +371,13 @@ test('猎人被狼刀可开枪；被女巫毒死不能开枪', () => {
 
   // 夜1：狼刀猎人，女巫不用药 → 猎人死亡
   playNight(room, { wolfTarget: hunterSeat, seerTarget: wolfSeats(room)[0] });
-  assert.equal(room._playerAt(hunterSeat).alive, false);
-  // 夜里被刀没有遗言，天亮后直接进猎人开枪
+  // 首日先竞选警长；死讯在竞选结束后才公布（面杀主流顺序）
   assert.equal(room.phase, 'dayStart');
   room.advance();
+  assert.equal(room.phase, 'sheriffDeclare');
+  assert.equal(room._playerAt(hunterSeat).alive, true, '首日竞选期间，昨夜死者尚未结算');
+  skipSheriff(room);
+  assert.equal(room._playerAt(hunterSeat).alive, false);
   assert.equal(room.phase, 'hunterShoot', '夜间死亡不留遗言，应直接进开枪阶段');
   const target = aliveGood(room).find(s => s !== hunterSeat);
   room.hunterShoot(pidAt(room, hunterSeat), target);
@@ -368,6 +391,8 @@ test('猎人被狼刀可开枪；被女巫毒死不能开枪', () => {
   confirmRoles(room2);
   const h2 = seatOfRole(room2, 'hunter');
   playNight(room2, { wolfTarget: nonHunterGood(room2)[0], witchPoison: h2, seerTarget: wolfSeats(room2)[0] });
+  drainDay(room2);      // dayStart → sheriffDeclare
+  skipSheriff(room2);   // 竞选结束 → 公布死讯
   assert.equal(room2._playerAt(h2).alive, false);
   assert.equal(room2._playerAt(h2).revealed, false, '被毒死的猎人不翻牌');
   drainDay(room2);
@@ -595,7 +620,7 @@ test('夜间：本晚不行动时可以手动放行', () => {
 
 test('夜间：女巫用药后自动进入下一阶段', () => {
   seedRandom(212);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   confirmRoles(room);
 
@@ -613,7 +638,7 @@ test('夜间：女巫用药后自动进入下一阶段', () => {
 
 test('夜间：预言家验完自动进入白天，且结果仍在私有字段里', () => {
   seedRandom(213);
-  const room = toNightSeer(setupRoom(8));
+  const room = toNightSeer(setupRoom(9));
   const seer = room._livePlayers().find(p => p.role === 'seer');
   const target = room._livePlayers().find(p => p.playerId !== seer.playerId && p.role !== 'seer');
 
@@ -647,7 +672,7 @@ function toNightSeer(room) {
 
 test('预言家：一晚只能查验一人（回归：曾经可以一夜验遍全场）', () => {
   seedRandom(41);
-  const room = toNightSeer(setupRoom(8));
+  const room = toNightSeer(setupRoom(9));
   const seer = room._livePlayers().find(p => p.role === 'seer');
   const others = room._livePlayers().filter(p => p.playerId !== seer.playerId);
 
@@ -663,7 +688,7 @@ test('预言家：一晚只能查验一人（回归：曾经可以一夜验遍�
 
 test('预言家：同一人不能重复查验（跨夜也不行）', () => {
   seedRandom(42);
-  const room = toNightSeer(setupRoom(8));
+  const room = toNightSeer(setupRoom(9));
   const seer = room._livePlayers().find(p => p.role === 'seer');
   const first = room._livePlayers().find(p => p.playerId !== seer.playerId);
 
@@ -682,7 +707,7 @@ test('预言家：同一人不能重复查验（跨夜也不行）', () => {
 
 test('预言家：只能验别人，不能验自己', () => {
   seedRandom(43);
-  const room = toNightSeer(setupRoom(8));
+  const room = toNightSeer(setupRoom(9));
   const seer = room._livePlayers().find(p => p.role === 'seer');
   assert.ok(room.submitNightAction(seer.playerId, { type: 'seerCheck', target: seer.seat }).error);
   restoreRandom();
@@ -690,7 +715,7 @@ test('预言家：只能验别人，不能验自己', () => {
 
 test('预言家：他人不能冒用查验接口', () => {
   seedRandom(44);
-  const room = toNightSeer(setupRoom(8));
+  const room = toNightSeer(setupRoom(9));
   const notSeer = room._livePlayers().find(p => p.role !== 'seer');
   const target = room._livePlayers().find(p => p.playerId !== notSeer.playerId);
   assert.ok(room.submitNightAction(notSeer.playerId, { type: 'seerCheck', target: target.seat }).error);
@@ -699,7 +724,7 @@ test('预言家：他人不能冒用查验接口', () => {
 
 test('预言家：查验结果只发给本人，且当夜可读', () => {
   seedRandom(45);
-  const room = toNightSeer(setupRoom(8));
+  const room = toNightSeer(setupRoom(9));
   const seer = room._livePlayers().find(p => p.role === 'seer');
   const target = room._livePlayers().find(p => p.playerId !== seer.playerId);
   const other = room._livePlayers().find(p => p.playerId !== seer.playerId && p.playerId !== target.playerId);
@@ -718,7 +743,7 @@ test('预言家：查验结果只发给本人，且当夜可读', () => {
 
 test('预言家：查验结果随天数累积，不会因进入白天而丢', () => {
   seedRandom(46);
-  const room = toNightSeer(setupRoom(8));
+  const room = toNightSeer(setupRoom(9));
   const seer = room._livePlayers().find(p => p.role === 'seer');
   const target = room._livePlayers().find(p => p.playerId !== seer.playerId);
   room.submitNightAction(seer.playerId, { type: 'seerCheck', target: target.seat });
@@ -843,8 +868,8 @@ test('狼人：票型只发给狼队，好人拿不到', () => {
 test('狼人：2 狼局必须意见一致（过半即全票）', () => {
   seedRandom(35);
   // 默认板子最小也是 3 狼，2 狼局要自定义板子
-  const room = makeRoom(8, { roles: { wolf: 2, villager: 3, seer: 1, witch: 1, hunter: 1 } });
-  for (let i = 2; i <= 8; i++) { room.addPlayer(`p${i}`, `玩家${i}`); room.sit(`p${i}`, i); }
+  const room = makeRoom(9, { roles: { wolf: 2, villager: 4, seer: 1, witch: 1, hunter: 1 } });
+  for (let i = 2; i <= 9; i++) { room.addPlayer(`p${i}`, `玩家${i}`); room.sit(`p${i}`, i); }
   room.sit('HOST', 1);
   toWolfVote(room);
 
@@ -899,7 +924,7 @@ test('结束阶段的报错不泄露操作人座位号', () => {
 
 test('天亮播报 / 白天发言：只有房主能结束', () => {
   seedRandom(23);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   confirmRoles(room);
   playNight(room, { wolfTarget: nonHunterGood(room)[0], witchHeal: nonHunterGood(room)[0] });
@@ -912,7 +937,7 @@ test('天亮播报 / 白天发言：只有房主能结束', () => {
 
 test('遗言阶段：由正在留遗言的玩家点结束', () => {
   seedRandom(24);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   room.phase = 'lastWords';
   room.phaseState = { seat: 3 };
@@ -923,20 +948,20 @@ test('遗言阶段：由正在留遗言的玩家点结束', () => {
 });
 
 test('法官模式：玩家不能用 endPhase 抢节奏', () => {
-  const room = setupRoom(8, { judgeMode: true });
+  const room = setupRoom(9, { judgeMode: true });
   room.start();
   assert.ok(room.endPhase('p1').error, '法官模式下应由法官推进');
 });
 
 test('已经结束的对局不能再结束阶段', () => {
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   room.gameOver = { winners: 'good' };
   assert.ok(room.endPhase('HOST').error);
 });
 
 test('无需手动结束的阶段调用 endPhase 会被拒绝', () => {
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   // 确认身份阶段靠全员确认自动推进，不提供「结束」入口
   assert.ok(room.endPhase('HOST').error);
@@ -944,7 +969,7 @@ test('无需手动结束的阶段调用 endPhase 会被拒绝', () => {
 });
 
 test('全员确认后立即进入夜晚，差一人都不推进', () => {
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   const live = room._livePlayers();
   for (let i = 0; i < live.length - 1; i++) {
@@ -956,19 +981,19 @@ test('全员确认后立即进入夜晚，差一人都不推进', () => {
 });
 
 test('快照里的确认进度是真实确认人数，不是已入座人数', () => {
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
-  // 满员 8 人，但一个人都还没确认——进度必须是 0/8
-  assert.deepEqual(room.snapshot('HOST').roleConfirm, { ready: 0, total: 8 },
+  // 满员 9 人，但一个人都还没确认——进度必须是 0/8
+  assert.deepEqual(room.snapshot('HOST').roleConfirm, { ready: 0, total: 9 },
     '用已入座人数冒充确认进度会让界面一开局就显示「全员已确认」');
   room.roleConfirm(pidAt(room, 3));
-  assert.deepEqual(room.snapshot('HOST').roleConfirm, { ready: 1, total: 8 });
+  assert.deepEqual(room.snapshot('HOST').roleConfirm, { ready: 1, total: 9 });
   room.roleConfirm(pidAt(room, 5));
-  assert.deepEqual(room.snapshot('HOST').roleConfirm, { ready: 2, total: 8 });
+  assert.deepEqual(room.snapshot('HOST').roleConfirm, { ready: 2, total: 9 });
 });
 
 test('离开确认阶段后不再暴露确认进度', () => {
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   assert.ok(room.snapshot('HOST').roleConfirm, '确认阶段应有进度');
   confirmRoles(room);
@@ -977,7 +1002,7 @@ test('离开确认阶段后不再暴露确认进度', () => {
 });
 
 test('引擎已不提供「跳过阶段」能力（每个阶段只由它自己的操作人推进）', () => {
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   assert.equal(typeof room.hostCommand, 'undefined',
     'hostCommand 已移除：房主不能再无差别跳过任何阶段');
@@ -991,7 +1016,7 @@ test('引擎已不提供「跳过阶段」能力（每个阶段只由它自己�
 
 test('房主出局后仍能推进「天亮播报 / 白天发言」', () => {
   seedRandom(95);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   confirmRoles(room);
   room.players.get('HOST').alive = false;   // 房主夜里被刀
@@ -1008,7 +1033,7 @@ test('房主出局后仍能推进「天亮播报 / 白天发言」', () => {
 });
 
 test('法官模式：全员确认后仍由法官手动推进', () => {
-  const room = setupRoom(8, { judgeMode: true });
+  const room = setupRoom(9, { judgeMode: true });
   room.start();
   confirmRoles(room);
   assert.equal(room.phase, 'roleReveal', '法官模式下节奏由法官掌握，不应自动进入夜晚');
@@ -1018,11 +1043,11 @@ test('法官模式：全员确认后仍由法官手动推进', () => {
 });
 
 test('法官模式下确认进度同样可见，且不因无人确认而推进', () => {
-  const room = setupRoom(8, { judgeMode: true });
+  const room = setupRoom(9, { judgeMode: true });
   room.start();
-  assert.deepEqual(room.snapshot(room.judgePlayerId).roleConfirm, { ready: 0, total: 8 });
+  assert.deepEqual(room.snapshot(room.judgePlayerId).roleConfirm, { ready: 0, total: 9 });
   room.roleConfirm(pidAt(room, 2));
-  assert.deepEqual(room.snapshot(room.judgePlayerId).roleConfirm, { ready: 1, total: 8 });
+  assert.deepEqual(room.snapshot(room.judgePlayerId).roleConfirm, { ready: 1, total: 9 });
 });
 
 // ---------- 警长竞选的候选人下发（回归：曾经前端拿不到名单）----------
@@ -1097,7 +1122,7 @@ test('警长平票 PK 阶段带上 pkCandidates', () => {
 
 test('放逐平票 PK 阶段带上 pkCandidates', () => {
   seedRandom(53);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   confirmRoles(room);
   playNight(room, { wolfTarget: nonHunterGood(room)[0], witchHeal: nonHunterGood(room)[0] });
@@ -1123,9 +1148,9 @@ test('放逐平票 PK 阶段带上 pkCandidates', () => {
 // 服务端那份在未指定 roles 时兜底。两者一旦漂移，界面会显示一套、
 // 实际发牌另一套——曾经 9 人局就因为前端多写了一个村民而无法创建。
 
-test('前端 DEFAULT_BOARDS 与服务端 defaultBoardFor 完全一致（8~16 人）', async () => {
+test('前端 DEFAULT_BOARDS 与服务端 defaultBoardFor 完全一致（9~16 人）', async () => {
   const client = await import('../public/js/constants.js');
-  for (let n = 8; n <= 16; n++) {
+  for (let n = 9; n <= 16; n++) {
     const srv = defaultBoardFor(n);
     const cli = client.DEFAULT_BOARDS[n];
     assert.ok(cli, `前端缺少 ${n} 人板子`);
@@ -1196,19 +1221,29 @@ test('白天与竞选的阶段也有播报', () => {
   restoreRandom();
 });
 
-test('播报顺序：先「天亮了」再报昨夜结果', () => {
+test('播报顺序：天亮了 → 竞选警长 → 公布昨夜结果', () => {
   seedRandom(62);
-  const room = setupRoom(8); // 8 人局无守卫
+  const room = setupRoom(9); // 8 人局无守卫
   room.start();
   confirmRoles(room);
   playNight(room, { wolfTarget: nonHunterGood(room)[0], witchHeal: nonHunterGood(room)[0], seerTarget: wolfSeats(room)[0] });
 
-  const texts = room.news.map(n => n.text);
+  let texts = room.news.map(n => n.text);
   const iDawn = texts.findIndex(t => t.includes('天亮了'));
-  const iResult = texts.findIndex(t => t.includes('平安夜') || t.includes('昨夜死亡'));
+  const iElection = texts.findIndex(t => t.includes('首日先进行警长竞选'));
   assert.ok(iDawn >= 0, '应有天亮播报');
+  assert.ok(iElection > iDawn, '「天亮了」之后应先宣布竞选警长');
+  assert.ok(!texts.some(t => t.includes('平安夜') || t.includes('昨夜死亡')),
+    '竞选结束前不应提前公布死讯');
+
+  room.advance();     // 天亮播报 → 警长竞选
+  skipSheriff(room);
+
+  texts = room.news.map(n => n.text);
+  const iResult = texts.findIndex(t => t.includes('平安夜') || t.includes('昨夜死亡'));
   assert.ok(iResult >= 0, '应有昨夜结果');
-  assert.ok(iDawn < iResult, `「天亮了」应排在昨夜结果之前，实际 dawn=${iDawn} result=${iResult}`);
+  assert.ok(iDawn < iElection && iElection < iResult,
+    `顺序应为 天亮 → 竞选 → 死讯，实际 dawn=${iDawn} election=${iElection} result=${iResult}`);
   restoreRandom();
 });
 
@@ -1232,7 +1267,7 @@ test('播报不泄露身份：夜间阶段一律不提座位号', () => {
 
 test('猎人开枪阶段：座位号对全场保密，只有猎人自己知道轮到自己', () => {
   seedRandom(64);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   confirmRoles(room);
   const hunter = room._livePlayers().find(p => p.role === 'hunter');
@@ -1253,7 +1288,7 @@ test('猎人开枪阶段：座位号对全场保密，只有猎人自己知道�
 
 test('默认规则下：被放逐的玩家身份不公开', () => {
   seedRandom(65);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   confirmRoles(room);
   playNight(room, { wolfTarget: nonHunterGood(room)[0], witchHeal: nonHunterGood(room)[0] });
@@ -1275,8 +1310,8 @@ test('默认规则下：被放逐的玩家身份不公开', () => {
 
 test('显式打开 revealOnExile 时才会翻牌', () => {
   seedRandom(66);
-  const room = makeRoom(8, { rules: { revealOnExile: true } });
-  for (let i = 2; i <= 8; i++) { room.addPlayer(`p${i}`, `玩家${i}`); room.sit(`p${i}`, i); }
+  const room = makeRoom(9, { rules: { revealOnExile: true } });
+  for (let i = 2; i <= 9; i++) { room.addPlayer(`p${i}`, `玩家${i}`); room.sit(`p${i}`, i); }
   room.sit('HOST', 1);
   room.start();
   confirmRoles(room);
@@ -1294,20 +1329,84 @@ test('显式打开 revealOnExile 时才会翻牌', () => {
   restoreRandom();
 });
 
+test('首日竞选前不结算夜间死亡：死者仍可上警（面杀主流顺序）', () => {
+  seedRandom(621);
+  const room = setupRoom(9);
+  room.start();
+  confirmRoles(room);
+  const victim = nonHunterGood(room)[0];
+  playNight(room, { wolfTarget: victim, seerTarget: wolfSeats(room)[0] });
+
+  room.advance();
+  assert.equal(room.phase, 'sheriffDeclare');
+  assert.equal(room._playerAt(victim).alive, true, '竞选阶段，昨夜死者尚未公布，应仍按存活处理');
+  // 死者本人在线下此时不知道自己已死，仍可上警并发言
+  room.setDeclaration(pidAt(room, victim), true);
+  assert.ok(room.sheriffState.onPodium.has(victim), '昨夜死者应能上警');
+
+  skipSheriff(room);
+  assert.equal(room._playerAt(victim).alive, false, '竞选结束后才结算昨夜死亡');
+  assert.ok(room.news.some(n => n.text.includes(`${victim}号 在昨夜死亡`)));
+  restoreRandom();
+});
+
+test('关闭 sheriffBeforeDeath：先公布死讯，再竞选警长', () => {
+  seedRandom(622);
+  const room = setupRoom(9, { rules: { sheriffBeforeDeath: false } });
+  room.start();
+  confirmRoles(room);
+  const victim = nonHunterGood(room)[0];
+  playNight(room, { wolfTarget: victim, seerTarget: wolfSeats(room)[0] });
+
+  assert.equal(room.phase, 'dayStart');
+  assert.equal(room._playerAt(victim).alive, false, '关闭新规则后，天亮即结算死亡');
+  assert.ok(room.news.some(n => n.text.includes(`${victim}号 在昨夜死亡`)));
+  assert.ok(!room.news.some(n => n.text.includes('首日先进行警长竞选')));
+
+  room.advance();
+  assert.equal(room.phase, 'sheriffDeclare', '公布死讯后再进入竞选');
+  restoreRandom();
+});
+
+test('昨夜死者当选警长：竞选结束后公布死讯并立即移交警徽', () => {
+  seedRandom(623);
+  const room = setupRoom(9);
+  room.start();
+  confirmRoles(room);
+  const victim = nonHunterGood(room)[0];
+  playNight(room, { wolfTarget: victim, seerTarget: wolfSeats(room)[0] });
+  room.advance();
+  assert.equal(room.phase, 'sheriffDeclare');
+
+  // 只有死者上警 → 直接当选（他此时还不知道自己已死）
+  for (const p of room._livePlayers()) room.setDeclaration(p.playerId, p.seat === victim);
+  assert.equal(room.sheriff, victim, '死者在竞选阶段按存活处理，可以当选');
+  assert.equal(room._playerAt(victim).alive, false, '竞选结束后结算死讯');
+  assert.equal(room.phase, 'sheriffHandoff', '死去的警长必须交回警徽');
+
+  const heir = aliveGood(room).find(s => s !== victim);
+  room.sheriffHandoff(pidAt(room, victim), { mode: 'pass', target: heir });
+  assert.equal(room.sheriff, heir);
+  restoreRandom();
+});
+
 test('昨夜结果必须随广播发出去（回归：曾在最后一次广播之后才写 news）', () => {
   seedRandom(67);
   // 记录每次 onChange 广播时的 news 快照，模拟客户端实际收到的内容
   const broadcasts = [];
-  const settings = buildSettings({ playerCount: 8 });
+  const settings = buildSettings({ playerCount: 9 });
   const room = new Room({
     code: 'TEST01', settings, hostPlayerId: 'HOST', hostName: '房主',
     onChange: (r) => broadcasts.push(r.news.map((n) => n.text).join(' | ')),
   });
-  for (let i = 2; i <= 8; i++) { room.addPlayer(`p${i}`, `玩家${i}`); room.sit(`p${i}`, i); }
+  for (let i = 2; i <= 9; i++) { room.addPlayer(`p${i}`, `玩家${i}`); room.sit(`p${i}`, i); }
   room.sit('HOST', 1);
   room.start();
   confirmRoles(room);
   playNight(room, { wolfTarget: nonHunterGood(room)[0], witchHeal: nonHunterGood(room)[0], seerTarget: wolfSeats(room)[0] });
+  // 首日的死讯要等竞选结束才结算；广播必须把结算后的版本推出去
+  room.advance();     // 天亮播报 → 警长竞选
+  skipSheriff(room);
 
   assert.ok(broadcasts.length > 0, '应发生过广播');
   const last = broadcasts[broadcasts.length - 1];
@@ -1318,7 +1417,7 @@ test('昨夜结果必须随广播发出去（回归：曾在最后一次广播�
 
 test('没有守卫的板子也要播报「天黑请闭眼」（回归：曾把它挂在守卫阶段上）', () => {
   seedRandom(68);
-  const room = setupRoom(8); // 默认 8 人局：3 狼 + 预言家 + 女巫 + 猎人 + 2 民，没有守卫
+  const room = setupRoom(9); // 默认 8 人局：3 狼 + 预言家 + 女巫 + 猎人 + 2 民，没有守卫
   assert.ok(!room._livePlayers().some(p => p.role === 'guard'), '前提：8 人局确实没有守卫');
   room.start();
   confirmRoles(room);
@@ -1340,7 +1439,7 @@ test('没有守卫的板子也要播报「天黑请闭眼」（回归：曾把�
 
 test('每个夜晚都会播报一次天黑', () => {
   seedRandom(69);
-  const room = setupRoom(8);
+  const room = setupRoom(9);
   room.start();
   confirmRoles(room);
   let guard = 0;
@@ -1660,7 +1759,7 @@ test('掩护阶段没有任何人能手动结束它', () => {
 });
 
 test('板子里没有的角色仍然跳过，不做无意义的空演', () => {
-  const room = nightWithDead(8, null, []);   // 默认 8 人局没有守卫
+  const room = nightWithDead(9, null, []);   // 默认 8 人局没有守卫
   assert.equal(room.settings.roles.guard || 0, 0, '前提：板子里没有守卫');
   assert.equal(room.phase, 'nightWolves', '没有守卫就直接从狼人开始，不空演');
 });
@@ -1701,9 +1800,10 @@ test('夜间死亡不留遗言（回归：曾经夜里被刀的人第二天还�
 
   const victim = room._livePlayers().find(p => !['hunter', 'seer', 'witch', 'wolf'].includes(p.role));
   playNight(room, { wolfTarget: victim.seat, seerTarget: wolfSeats(room)[0] });
+  room.advance();   // 天亮播报 → 首日警长竞选
+  skipSheriff(room);
   assert.equal(room._playerAt(victim.seat).alive, false, '前提：该玩家夜里被刀');
 
-  room.advance();   // 离开天亮播报
   assert.notEqual(room.phase, 'lastWords', '夜里被刀的人不该有遗言');
   restoreRandom();
 });
@@ -1716,7 +1816,8 @@ test('猎人夜里被刀：能开枪，但没有遗言', () => {
   const hunterSeat = seatOfRole(room, 'hunter');
 
   playNight(room, { wolfTarget: hunterSeat, seerTarget: wolfSeats(room)[0] });
-  room.advance();
+  room.advance();     // 天亮播报 → 首日警长竞选
+  skipSheriff(room);  // 竞选结束 → 公布死讯 → 猎人开枪
   assert.equal(room.phase, 'hunterShoot', '应直接进开枪阶段，不经过遗言');
   assert.ok(room.snapshot(pidAt(room, hunterSeat)).private.canShoot, '猎人本人应能开枪');
   restoreRandom();
@@ -1765,28 +1866,29 @@ test('不会出现「遗言名额被夜间死者占掉」的情况', () => {
 
 // ---------- 猎人开枪之后的流向取决于他是怎么死的 ----------
 
-test('猎人夜里被刀：天亮开枪后应继续白天，不能直接跳进黑夜', () => {
+test('猎人夜里被刀：警长竞选后开枪，开枪后应继续白天而不是进入黑夜', () => {
   seedRandom(96);
   const room = setupRoom(9);
   room.start();
   confirmRoles(room);
   const hunterSeat = seatOfRole(room, 'hunter');
 
-  // 狼刀猎人
+  // 狼刀猎人；首日先竞选警长，死讯与开枪在竞选结束后
   playNight(room, { wolfTarget: hunterSeat, seerTarget: wolfSeats(room)[0] });
   assert.equal(room.phase, 'dayStart');
   room.advance();
-  assert.equal(room.phase, 'hunterShoot', '夜里被刀 → 天亮后先开枪');
+  skipSheriff(room);
+  assert.equal(room.phase, 'hunterShoot', '竞选结束、公布死讯后开枪');
 
   const target = aliveGood(room).find(s => s !== hunterSeat);
   room.hunterShoot(pidAt(room, hunterSeat), target);
 
-  // 开枪之后必须继续白天（首日是警长竞选），而不是进入黑夜
+  // 开枪之后必须继续白天（首日竞选已经完成 → 自由发言），而不是进入黑夜
   let g = 0;
   while (room.phase === 'hunterShoot' && g++ < 5) room.advance();
   assert.ok(!room.phase.startsWith('night'),
-    `猎人夜里被刀、天亮开枪后不该直接进黑夜，实际到了 ${room.phase}`);
-  assert.equal(room.phase, 'sheriffDeclare', '首日应继续走警长竞选');
+    `猎人夜里被刀、开枪后不该直接进黑夜，实际到了 ${room.phase}`);
+  assert.equal(room.phase, 'dayTalk', '警长竞选已结束，应继续白天发言');
   restoreRandom();
 });
 
