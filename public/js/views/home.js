@@ -2,7 +2,7 @@
 import { el, esc, toast, clearDraft } from '../ui.js';
 import { net, session, setPlayerName, playerName, store } from '../net.js';
 import { buildSettingsForm } from '../components/settingsForm.js';
-import { brand } from '../components/brand.js';
+import { atmosphere, pageIntro } from '../components/atmosphere.js';
 import { DEFAULT_BOARDS, DEFAULT_RULES, DEFAULT_PLAYER_COUNT } from '../constants.js';
 
 let tab = null; // 'create' | 'join'，null 表示按 URL 推断
@@ -81,11 +81,13 @@ export function renderHome(root, { onLogout }) {
   settingsForm.onChange({ ok: settingsForm.valid });
 
   root.appendChild(el('div', { class: 'view home-view' }, [
-    brand({ compact: true }),
+    atmosphere({ compact: true }),
+    el('section', { class: 'home-content' }, [
     el('div', { class: 'account-bar glass' }, [
       el('span', { class: 'account-name' }, `👤 ${esc(acct.name || acct.email)}`),
       el('button', { class: 'link-btn', type: 'button', click: onLogout }, '退出登录'),
     ]),
+    pageIntro('GATHER YOUR PEOPLE', '今晚，组一局。', '创建专属房间，或加入朋友的月夜邀约。'),
     el('div', { class: 'tabs glass' }, [
       el('button', {
         class: 'tab' + (tab === 'create' ? ' active' : ''), type: 'button',
@@ -97,6 +99,7 @@ export function renderHome(root, { onLogout }) {
       }, '加入房间'),
     ]),
     buildPanel(),
+    ]),
   ]));
 
   // 切 Tab 时保留已输入的昵称，避免重新输入

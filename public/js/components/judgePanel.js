@@ -1,4 +1,5 @@
 // 法官面板：全场身份、夜间操作汇总、投票明细、手动结算。
+import { roleArt } from './roleArt.js';
 import { el, esc } from '../ui.js';
 import { PHASE_NAME } from '../constants.js';
 
@@ -15,7 +16,7 @@ export function judgePanel(s, emit) {
       return el('tr', { class: p.alive ? '' : 'dead' }, [
         el('td', { class: 'jt-seat' }, p.seat ? `${p.seat}` : '—'),
         el('td', {}, p.name ? esc(p.name) : '—'),
-        el('td', {}, p.roleName ? el('span', { class: 'role-tag ' + (isWolf ? 'wolf' : 'good') }, p.roleName) : '—'),
+        el('td', {}, p.roleName ? el('div', { class: 'judge-role' }, [roleArt(p.role, { className: 'judge-role-art' }), el('span', { class: 'role-tag ' + (isWolf ? 'wolf' : 'good') }, p.roleName)]) : '—'),
         el('td', {}, p.alive ? el('span', { class: 'alive-tag' }, '存活') : el('span', { class: 'dead-tag' }, '出局')),
         el('td', {}, p.isSheriff ? '🛡' : ''),
       ]);

@@ -2,7 +2,7 @@
 import { el } from '../ui.js';
 import { toast } from '../ui.js';
 import { net, session, setPlayerName } from '../net.js';
-import { brand } from '../components/brand.js';
+import { atmosphere, pageIntro } from '../components/atmosphere.js';
 
 let mode = 'login'; // 'login' | 'register'
 
@@ -16,14 +16,14 @@ const testLogin = (() => {
 export function renderAuth(root, onDone) {
   const emailInput = el('input', {
     class: 'input', type: 'email', placeholder: 'you@example.com',
-    autocomplete: 'username', inputmode: 'email', draftKey: 'auth-email',
+    autocomplete: 'username', inputmode: 'email', draftKey: 'auth-email', id: 'auth-email', required: true,
   });
   const passInput = el('input', {
     class: 'input', type: 'password', placeholder: '至少 6 位',
-    autocomplete: 'current-password',
+    autocomplete: mode === 'register' ? 'new-password' : 'current-password', id: 'auth-password', required: true,
   });
   const nameInput = el('input', {
-    class: 'input', type: 'text', placeholder: '不填则用邮箱前缀', maxlength: 12, draftKey: 'auth-name',
+    class: 'input', type: 'text', placeholder: '不填则用邮箱前缀', maxlength: 12, draftKey: 'auth-name', id: 'auth-name',
   });
 
   let busy = false;
@@ -49,10 +49,10 @@ export function renderAuth(root, onDone) {
   }
 
   const fields = [
-    el('div', { class: 'field' }, [el('label', {}, '邮箱'), emailInput]),
-    el('div', { class: 'field' }, [el('label', {}, '密码'), passInput]),
+    el('div', { class: 'field' }, [el('label', { for: 'auth-email' }, '邮箱地址'), emailInput]),
+    el('div', { class: 'field' }, [el('label', { for: 'auth-password' }, '密码'), passInput]),
     mode === 'register'
-      ? el('div', { class: 'field' }, [el('label', {}, '昵称（可选）'), nameInput])
+      ? el('div', { class: 'field' }, [el('label', { for: 'auth-name' }, '昵称（可选）'), nameInput])
       : null,
   ];
 
@@ -89,7 +89,9 @@ export function renderAuth(root, onDone) {
   ]);
 
   root.appendChild(el('div', { class: 'view auth-view' }, [
-    brand(),
+    atmosphere(),
+    el('section', { class: 'auth-content' }, [
+    pageIntro('YOUR SEAT IS WAITING', mode === 'login' ? '欢迎回到月夜' : '成为月夜的一员', '落座之前，先让我们认识一下。'),
     el('div', { class: 'tabs glass' }, [
       el('button', {
         class: 'tab' + (mode === 'login' ? ' active' : ''), type: 'button',
@@ -101,6 +103,8 @@ export function renderAuth(root, onDone) {
       }, '注册'),
     ]),
     form,
+    el('div', { class: 'auth-footnote' }, '✧  面对面交锋，让聚会回归在场'),
+    ]),
   ]));
 }
 

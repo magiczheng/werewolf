@@ -1,4 +1,5 @@
 // 座位网格：大厅（可点击入座）与游戏内（存活/出局/翻牌）共用。
+import { roleArt } from './roleArt.js';
 import { el, esc } from '../ui.js';
 
 /**
@@ -20,8 +21,9 @@ export function seatGrid(players, opts = {}) {
       // 引擎会自动让出旧座位，不需要先「起立」。
       const canSit = !!opts.onSit && !!me;
       const sitting = !!me && !!me.seat;
-      const card = el('div', { class: 'seat empty' }, [
+      const card = el(canSit ? 'button' : 'div', { class: 'seat empty', ...(canSit ? { type: 'button', 'aria-label': `${seat.seat}号座位，${sitting ? '换到这里' : '点击入座'}` } : {}) }, [
         el('span', { class: 'seat-no' }, String(seat.seat)),
+        el('span', { class: 'seat-avatar vacant-avatar', 'aria-hidden': 'true' }, '+'),
         el('span', { class: 'seat-vacant' }, '空位'),
         canSit ? el('span', { class: 'seat-cta' }, sitting ? '换到这里' : '点击入座') : null,
       ]);
@@ -40,6 +42,8 @@ export function seatGrid(players, opts = {}) {
     const bits = [
       el('span', { class: 'seat-no' }, String(seat.seat)),
       seat.isSheriff ? el('span', { class: 'sheriff-mark', title: '警长' }, '🛡') : null,
+      (opts.showRole && seat.revealed && seat.roleName && roleArt(seat.role, { className: 'seat-role-art' }))
+        || el('span', { class: 'seat-avatar', 'aria-hidden': 'true' }, seat.name.slice(0, 1)),
       el('span', { class: 'name' }, esc(seat.name)),
     ];
 

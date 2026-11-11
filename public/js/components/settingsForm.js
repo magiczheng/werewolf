@@ -1,4 +1,5 @@
 // 角色/规则配置表单：首页（创建房间）与大厅（房主改设置）共用。
+import { roleArt } from './roleArt.js';
 import { el } from '../ui.js';
 import { ROLE_META, ROLE_KEYS, DEFAULT_BOARDS, PLAYER_COUNTS, RULES_LABELS } from '../constants.js';
 
@@ -35,14 +36,14 @@ export function buildSettingsForm(initial, opts = {}) {
 
     if (opts.showCount !== false) {
       const sel = el('select', {
-        class: 'input',
+        class: 'input', id: 'player-count',
         change: (e) => {
           st.playerCount = Number(e.target.value);
           st.roles = { ...(DEFAULT_BOARDS[st.playerCount] || {}) };
           render();
         },
       }, PLAYER_COUNTS.map((n) => el('option', { value: n, selected: n === st.playerCount }, `${n} 人`)));
-      parts.push(el('div', { class: 'field' }, [el('label', {}, '游戏人数'), sel]));
+      parts.push(el('div', { class: 'field' }, [el('label', { for: 'player-count' }, '游戏人数'), sel]));
     }
 
     if (opts.showJudge !== false) {
@@ -54,19 +55,20 @@ export function buildSettingsForm(initial, opts = {}) {
         el('button', {
           class: 'switch' + (st.judgeMode ? ' on' : ''),
           type: 'button',
-          'aria-pressed': String(st.judgeMode),
+          'aria-pressed': String(st.judgeMode), 'aria-label': '法官模式',
           click: () => { st.judgeMode = !st.judgeMode; render(); },
         }),
       ]));
     }
 
-    parts.push(el('div', { class: 'panel-title' }, '角色配置'));
+    parts.push(el('div', { class: 'panel-title' }, [el('span', {}, '角色配置'), el('a', { class: 'role-catalog-link', href: '/roles.html', target: '_blank', rel: 'noopener' }, '角色图鉴 ↗')]));
 
     const steppers = el('div', { class: 'steppers' });
     for (const key of ROLE_KEYS) {
       const m = ROLE_META[key];
       const val = st.roles[key] || 0;
-      steppers.appendChild(el('div', { class: 'stepper' + (val ? ' active' : '') + (m.camp === 'wolf' ? ' wolf' : '') }, [
+      steppers.appendChild(el('div', { class: 'stepper role-option' + (val ? ' active' : '') + (m.camp === 'wolf' ? ' wolf' : '') }, [
+        roleArt(key, { className: 'role-option-art', full: true }),
         el('div', { class: 'stepper-label' }, [
           el('span', { class: 'stepper-name' }, m.name),
           el('small', {}, m.sub),
@@ -100,13 +102,13 @@ export function buildSettingsForm(initial, opts = {}) {
         el('button', {
           class: 'switch' + (st.rules[key] ? ' on' : ''),
           type: 'button',
-          'aria-pressed': String(st.rules[key]),
+          'aria-pressed': String(st.rules[key]), 'aria-label': label,
           click: () => { st.rules[key] = !st.rules[key]; render(); },
         }),
       ]));
     }
 
-    const form = el('div', { class: 'col' }, parts);
+    const form = el('div', { class: 'col settings-form' }, parts);
     if (root) root.replaceWith(form);
     root = form;
     onChange({ ok });

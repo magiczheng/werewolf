@@ -7,7 +7,7 @@
 // 局域网 http://192.168.x.x:3000 是不安全源，SW 根本无法注册——这是预期行为，
 // 客户端已用 isSecureContext 守卫，静默跳过，不影响任何功能。
 
-const CACHE = 'werewolf-v1';
+const CACHE = 'werewolf-moonlit-v3-portraits';
 
 // 只预缓存外壳。JS 模块不逐个列出——没有打包器，手工维护清单必然会漏，
 // 一旦漏了就出现「新外壳 + 旧模块」的错配，比不缓存更糟。
@@ -16,6 +16,7 @@ const SHELL = [
   '/',
   '/css/tokens.css',
   '/css/style.css',
+  '/images/moonlit-forest.svg',
   '/icons/icon-192.png',
   '/manifest.json',
 ];
@@ -57,7 +58,7 @@ self.addEventListener('fetch', (e) => {
   // 静态资源：stale-while-revalidate —— 先用缓存立即响应，后台拉新版本。
   // 零构建项目不能给 JS 设长缓存，否则部署后必然出现新旧模块错配；
   // SWR 让每次加载都顺手刷新缓存，新版本下一次进入即生效。
-  if (/^\/(js|css|icons)\//.test(url.pathname) || url.pathname === '/manifest.json') {
+  if (/^\/(js|css|icons|images)\//.test(url.pathname) || url.pathname === '/manifest.json') {
     e.respondWith((async () => {
       const cache = await caches.open(CACHE);
       const hit = await cache.match(req);

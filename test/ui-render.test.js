@@ -686,6 +686,34 @@ function findByClass(node, cls, out = []) {
 }
 
 describe('防偷看', () => {
+  test('角色插画不会暴露尚未公开的座位身份', async () => {
+    const { seatGrid } = await import('../public/js/components/seats.js');
+    const roster = players({
+      1: { role: 'wolf', roleName: '狼人', revealed: false },
+      2: { role: 'seer', roleName: '预言家', revealed: true },
+    });
+    const privateGrid = seatGrid(roster, { me: meFor('wolf'), showRole: false });
+    assert.equal(findByClass(privateGrid, 'seat-role-art').length, 0,
+      '未允许公开身份的座位表不能加载角色原画');
+    const publicGrid = seatGrid(roster, { me: meFor('wolf'), showRole: true });
+    const art = findByClass(publicGrid, 'seat-role-art');
+    assert.equal(art.length, 1, '只展示已翻牌角色，不能因存在 role 字段就展示');
+    assert.equal(art[0].getAttribute('src'), '/images/roles/seer-thumb.jpg');
+  });
+
+  test('公共阶段插画不随当前玩家的私有身份改变', () => {
+    const sources = (role) => {
+      const root = renderAndAssert(`phase-art-${role}`, makeState({
+        phase: 'nightSeer', me: meFor(role), private: privateFor(),
+      }));
+      assert.equal(findByClass(root, 'identity-art').length, 0,
+        '私有角色原画不能直接放在对局正文中');
+      return [...findByClass(root, 'phase-role-art'), ...findByClass(root, 'wait-role-art')]
+        .map((n) => n.getAttribute('src'));
+    };
+    assert.deepEqual(sources('wolf'), sources('villager'),
+      '旁人不能从公共页面的角色插画推断玩家的私有身份');
+  });
   test('确认身份阶段：身份牌内联展示（此时必须看得见）', () => {
     const root = renderAndAssert('peek-reveal', makeState({ phase: 'roleReveal' }));
     assert.equal(findByClass(root, 'role-card').length, 1, '确认身份阶段应内联显示身份牌');
@@ -697,6 +725,7 @@ describe('防偷看', () => {
       const root = renderAndAssert(`peek-${phase}`, makeState({
         phase, me: meFor('wolf'), private: privateFor(),
       }));
+      assert.equal(findByClass(root, 'identity-art').length, 0, '开局后私有插画也必须收起');
       assert.equal(findByClass(root, 'role-card').length, 0,
         '桌上一直摊着身份牌，隔桌就能看见——这是要防的泄露');
       assert.equal(findByClass(root, 'peek-btn').length, 1, '应提供按住查看的入口');

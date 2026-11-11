@@ -5,12 +5,12 @@ const MARK = `
 <svg viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <defs>
     <linearGradient id="wwMoon" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#a78bfa"/>
-      <stop offset="1" stop-color="#4dd4ff"/>
+      <stop offset="0" stop-color="#e4d4a9"/>
+      <stop offset="1" stop-color="#c4a267"/>
     </linearGradient>
     <radialGradient id="wwGlow" cx="0.5" cy="0.5" r="0.5">
-      <stop offset="0" stop-color="#7c5cff" stop-opacity=".55"/>
-      <stop offset="1" stop-color="#7c5cff" stop-opacity="0"/>
+      <stop offset="0" stop-color="#c9ad73" stop-opacity=".55"/>
+      <stop offset="1" stop-color="#c9ad73" stop-opacity="0"/>
     </radialGradient>
   </defs>
   <circle cx="32" cy="32" r="30" fill="url(#wwGlow)"/>
@@ -18,10 +18,10 @@ const MARK = `
   <path d="M32 13 L21 8.5 L22.5 19.5 L18 24 L20.5 34 L26 47 L32 52 L38 47 L43.5 34 L46 24 L41.5 19.5 L43 8.5 Z"
         fill="url(#wwMoon)" fill-opacity=".92"/>
   <!-- 双眼 -->
-  <ellipse cx="26.5" cy="28" rx="2.6" ry="1.9" fill="#0f1020"/>
-  <ellipse cx="37.5" cy="28" rx="2.6" ry="1.9" fill="#0f1020"/>
+  <ellipse cx="26.5" cy="28" rx="2.6" ry="1.9" fill="#15261d"/>
+  <ellipse cx="37.5" cy="28" rx="2.6" ry="1.9" fill="#15261d"/>
   <!-- 吻部高光 -->
-  <path d="M32 38.5 L29 42 L32 44 L35 42 Z" fill="#0f1020" fill-opacity=".55"/>
+  <path d="M32 38.5 L29 42 L32 44 L35 42 Z" fill="#15261d" fill-opacity=".55"/>
 </svg>`;
 
 export function brand(opts = {}) {

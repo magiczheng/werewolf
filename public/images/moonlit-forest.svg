@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 850" fill="none">
+<defs>
+ <linearGradient id="sky" x2="0" y2="1"><stop stop-color="#142d30"/><stop offset="1" stop-color="#29413b"/></linearGradient>
+ <radialGradient id="halo"><stop stop-color="#d8c38c" stop-opacity=".18"/><stop offset="1" stop-color="#d8c38c" stop-opacity="0"/></radialGradient>
+ <linearGradient id="moon" x2="1" y2="1"><stop stop-color="#f6e8bb"/><stop offset="1" stop-color="#bdab76"/></linearGradient>
+ <linearGradient id="mist" x2="0" y2="1"><stop stop-color="#668177" stop-opacity=".3"/><stop offset="1" stop-color="#152a27" stop-opacity="0"/></linearGradient>
+ <g id="pine"><path d="M0 0-30 65h16l-32 51h24l-41 62h54v26H9v-26h54l-41-62h24L14 65h16Z" fill="currentColor"/></g>
+</defs>
+<path fill="url(#sky)" d="M0 0h800v850H0z"/>
+<circle cx="440" cy="285" r="250" fill="url(#halo)"/>
+<g fill="#d9cfab" opacity=".65"><circle cx="136" cy="138" r="1.5"/><circle cx="311" cy="95" r="1"/><circle cx="602" cy="159" r="1.5"/><circle cx="685" cy="89" r="1"/><circle cx="545" cy="62" r="1"/><circle cx="236" cy="251" r="1"/><circle cx="700" cy="310" r="1"/><circle cx="85" cy="330" r="1"/><circle cx="353" cy="173" r="1.5"/></g>
+<g stroke="#c4b883" opacity=".22"><circle cx="440" cy="285" r="137"/><circle cx="440" cy="285" r="146" stroke-dasharray="1 13"/><path d="M440 124v-17m0 356v-17M279 285h-17m356 0h-17"/></g>
+<circle cx="440" cy="285" r="108" fill="url(#moon)"/>
+<g fill="#ab9d72" opacity=".18"><circle cx="409" cy="246" r="28"/><circle cx="478" cy="322" r="34"/><circle cx="472" cy="222" r="12"/></g>
+<path d="m0 479 126-95 93 73 108-63 114 87 135-115 224 120v364H0Z" fill="#344e45"/>
+<path d="m0 547 159-111 137 98 169-106 148 74 187-83v431H0Z" fill="#263f36"/>
+<g color="#29473d"><use href="#pine" transform="translate(57 325) scale(1.5)"/><use href="#pine" transform="translate(703 327) scale(1.5)"/><use href="#pine" transform="translate(606 399)"/><use href="#pine" transform="translate(243 405) scale(.8)"/></g>
+<path d="M0 555q200-66 400-5t400-15v164H0Z" fill="url(#mist)"/>
+<g color="#1a342c"><use href="#pine" transform="translate(126 355) scale(2)"/><use href="#pine" transform="translate(758 391) scale(1.8)"/><use href="#pine" transform="translate(637 470) scale(1.3)"/><use href="#pine" transform="translate(315 492) scale(.8)"/></g>
+<!-- A quiet village beneath the moon -->
+<g stroke="#728072" stroke-width="1"><path d="M350 612v-62l34-27 34 27v62z" fill="#21392f"/><path d="m341 551 43-36 43 36" fill="#172f28"/><path d="M433 624v-42l26-23 27 23v42" fill="#21392f"/><path d="m425 584 34-32 35 32" fill="#172f28"/></g>
+<g fill="#c4aa65"><path d="M378 554h12v18h-12z" opacity=".8"/><path d="M453 587h10v13h-10z" opacity=".6"/></g>
+<path d="M0 686q150-88 308-28t492-17v209H0Z" fill="#142d25"/>
+<path d="M390 625q-20 44 55 80t-54 145h99q120-105-1-156t-83-69" fill="#8b9674" opacity=".12"/>
+<!-- Wolf silhouette on the ridge -->
+<path d="m515 656-16-9-19-2-15-13-7-19-8-10-2-18-9 10-12-4-5-16-8 25-10 9-4 19-14 16 16 6 9-6 16 3 11 17 8 23-6 28h9l12-29-1-15 18 8 12 32h9l-5-36-8-15 19 9 14-1Z" fill="#0c211c"/>
+<g color="#10271f"><use href="#pine" transform="translate(23 415) scale(2.7)"/><use href="#pine" transform="translate(764 480) scale(2.4)"/></g>
+<path d="M0 792q250-50 414-10t386-22v90H0Z" fill="#0d241d"/>
+<g stroke="#b9a775" opacity=".4"><path d="m81 62 6 6-6 6-6-6Zm635 698 5 5-5 5-5-5Z"/><path d="M60 68h-9m40 0h9M81 48v-9m0 48v9"/></g>
+</svg>
