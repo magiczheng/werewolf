@@ -2,6 +2,8 @@
 import { el, toast, confirmDialog } from '../ui.js';
 import { net, store } from '../net.js';
 import { PHASE_NAME, isNightPhase } from '../constants.js';
+import { roleArt, PHASE_ART } from '../components/roleArt.js';
+import { icon } from '../components/icon.js';
 import { seatGrid } from '../components/seats.js';
 import { targetPicker } from '../components/targetPicker.js';
 import { roleCard } from '../components/roleCard.js';
@@ -66,7 +68,9 @@ export function resetGameView() {
 
 function waitScreen(text, s) {
   return el('div', { class: 'wait-screen' }, [
-    el('div', { class: 'wait-icon' }, isNightPhase(s.phase) ? '🌙' : '☀️'),
+    PHASE_ART[s.phase]
+      ? roleArt(PHASE_ART[s.phase], { className: 'wait-role-art', full: true })
+      : el('div', { class: 'wait-icon' }, icon(isNightPhase(s.phase) ? 'moon' : 'sun')),
     el('div', { class: 'wait-text' }, text),
   ]);
 }
@@ -471,7 +475,7 @@ function gameOverCard(s) {
   };
 
   return el('div', { class: 'card glass gameover ' + (isWolf ? 'wolf' : 'good') }, [
-    el('div', { class: 'go-icon' }, isWolf ? '🐺' : '🎉'),
+    roleArt(isWolf ? 'wolf' : 'villager', { className: 'victory-role-art', full: true }),
     el('div', { class: 'go-camp' }, isWolf ? '狼人阵营获胜' : '好人阵营获胜'),
     el('div', { class: 'hint' }, '下方座位已揭示所有身份'),
     s.me.isHost
@@ -538,7 +542,7 @@ export function renderGame(root) {
 
   const topbar = el('div', { class: 'game-topbar glass' }, [
     el('div', { class: 'gt-left' }, [
-      el('span', { class: 'gt-phase' }, `${isNightPhase(phase) ? '🌙' : '☀️'} ${PHASE_NAME[phase] || phase}`),
+      el('span', { class: 'gt-phase' }, [PHASE_ART[phase] ? roleArt(PHASE_ART[phase], { className: 'phase-role-art' }) : icon(isNightPhase(phase) ? 'moon' : 'sun'), PHASE_NAME[phase] || phase]),
       el('span', { class: 'gt-day' }, `第 ${s.day} 天${s.sheriff ? ` · 警长 ${s.sheriff}号` : ''}`),
     ]),
     el('div', { class: 'gt-right' }, [
@@ -598,7 +602,7 @@ export function renderGame(root) {
   }));
 
   // ---------- 底部 Tab 栏 ----------
-  const tabbar = el('nav', { class: 'tabbar glass' }, tabs.map((t) => el('button', {
+  const tabbar = el('nav', { class: 'tabbar glass', 'aria-label': '对局导航' }, tabs.map((t) => el('button', {
     class: 'tabbar-item' + (t.id === activeTab ? ' active' : ''),
     type: 'button',
     click: () => {
@@ -608,7 +612,7 @@ export function renderGame(root) {
     },
     'data-tab': t.id,
   }, [
-    el('span', { class: 'tb-icon' }, t.icon),
+    icon(t.id, 'tb-icon'),
     el('span', { class: 'tb-label' }, t.label),
     t.badge ? el('span', { class: 'tb-badge' }) : null,
   ])));

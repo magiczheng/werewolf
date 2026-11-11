@@ -2,6 +2,8 @@
 import { el, esc, toast, confirmDialog, copyText } from '../ui.js';
 import { net, store } from '../net.js';
 import { seatGrid } from '../components/seats.js';
+import { roleArt } from '../components/roleArt.js';
+import { pageIntro } from '../components/atmosphere.js';
 import { ROLE_META, RULES_LABELS } from '../constants.js';
 
 // 二维码按房间号缓存：每次推送都重新请求会生成一次二维码，
@@ -28,7 +30,7 @@ export function renderLobby(root) {
   // 点了另一个空位也能直接换过去（引擎会自动让出旧座位），这里只是显式的入口。
   const standUp = () => net.emit('standUp').catch((e) => toast(e.message, true));
 
-  const seatCard = el('div', { class: 'card glass col' }, [
+  const seatCard = el('div', { class: 'card glass col seats-card' }, [
     el('div', { class: 'panel-title' }, [
       '座位',
       el('span', { class: 'pill', style: 'margin-left:8px' }, `${occupied}/${s.settings.playerCount}`),
@@ -104,9 +106,10 @@ export function renderLobby(root) {
 
   const parts = [
     el('div', { class: 'lobby-head' }, [
-      el('div', { class: 'panel-title', style: 'margin:0' }, '房间大厅'),
+      el('div', { class: 'panel-title', style: 'margin:0' }, '狼人杀 / 房间大厅'),
       el('button', { class: 'link-btn', type: 'button', click: leaveRoom }, '退出'),
     ]),
+    pageIntro('BEFORE THE MOONRISE', '好故事，等人齐。', '邀请朋友加入，选好座位，准备迎接第一个夜晚。'),
     shareCard,
     seatCard,
   ];
@@ -127,13 +130,13 @@ export function renderLobby(root) {
     .map(([key, n]) => {
       const meta = ROLE_META[key];
       return el('span', {
-        class: 'cfg-chip' + (meta && meta.camp === 'wolf' ? ' wolf' : ''),
-      }, `${meta ? meta.name : key} ×${n}`);
+        class: 'cfg-chip cfg-role' + (meta && meta.camp === 'wolf' ? ' wolf' : ''),
+      }, [roleArt(key, { className: 'cfg-role-art' }), el('span', {}, `${meta ? meta.name : key} ×${n}`)]);
     });
 
   const activeRules = RULES_LABELS.filter(([key]) => cfg.rules && cfg.rules[key]);
 
-  parts.push(el('div', { class: 'card glass col' }, [
+  parts.push(el('div', { class: 'card glass col lobby-config' }, [
     el('div', { class: 'panel-title' }, [
       '本局配置',
       el('span', { class: 'cfg-locked' }, '创建后不可修改'),

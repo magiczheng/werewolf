@@ -5,6 +5,7 @@
 //   2. 显示时用中性低对比配色——不用红/绿大色块和发光。旁边的人扫一眼只会看到
 //      一块深色面板，而不是「红色 = 这人是狼」这种隔桌可读的信号。
 // 角色名本身已经说明了阵营（狼人/预言家/村民…），不需要靠颜色去喊。
+import { roleArt } from './roleArt.js';
 import { el } from '../ui.js';
 
 /** 角色名 + 阵营 + 描述 + 私有信息，身份牌与浮层共用同一份内容。 */
@@ -64,6 +65,7 @@ export function roleLines(s) {
   }
 
   return [
+    roleArt(me.role, { className: 'identity-art', full: true }),
     el('div', { class: 'rc-name' }, me.roleName || '—'),
     el('div', { class: 'rc-camp' }, me.isWolf ? '狼人阵营' : '好人阵营'),
     me.roleDesc ? el('div', { class: 'rc-desc' }, me.roleDesc) : null,
