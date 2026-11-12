@@ -1,6 +1,6 @@
 {
   "name": "werewolf-party",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "网页版狼人杀平台 —— 线下聚会用：发牌、阶段流转、计时、投票与结算",
   "type": "module",
   "main": "server/index.js",
@@ -11,7 +11,11 @@
     "test": "node --test test/*.test.js",
     "icons": "./tools/make-icons.sh",
     "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui"
+    "test:e2e:ui": "playwright test --ui",
+    "version:check": "node tools/check-version.mjs",
+    "version:patch": "npm version patch --no-git-tag-version",
+    "version:minor": "npm version minor --no-git-tag-version",
+    "version:major": "npm version major --no-git-tag-version"
   },
   "engines": {
     "node": ">=22"

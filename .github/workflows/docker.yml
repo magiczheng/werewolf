@@ -24,7 +24,9 @@ jobs:
           node-version: '22'
           cache: npm
       - run: npm ci
+      - run: npm run version:check
       - run: npm test
+      - run: python3 -m unittest discover -s test/deploy -p "test_*.py"
       - run: npx playwright install --with-deps chromium webkit
       - run: npm run test:e2e
       - name: 上传浏览器测试报告
@@ -52,6 +54,12 @@ jobs:
       - name: 统一镜像名为小写
         run: echo "IMAGE_NAME=${GITHUB_REPOSITORY,,}" >> "$GITHUB_ENV"
 
+      - name: 读取应用版本
+        id: version
+        run: |
+          echo "value=$(node -p 'require("./package.json").version')" >> "$GITHUB_OUTPUT"
+          echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$GITHUB_OUTPUT"
+
       - uses: docker/setup-buildx-action@v3
 
       - name: 登录 GitHub 容器镜像仓库
@@ -73,6 +81,8 @@ jobs:
             type=semver,pattern={{version}}
             type=semver,pattern={{major}}.{{minor}}
             type=sha,prefix=sha-
+            type=raw,value=sha-${{ github.sha }}
+            type=raw,value=${{ steps.version.outputs.value }}-build.${{ github.run_number }}
             type=raw,value=latest,enable={{is_default_branch}}
 
       - name: 构建并推送
@@ -81,7 +91,12 @@ jobs:
           context: .
           push: ${{ github.event_name != 'pull_request' }}
           tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          labels: |
+            ${{ steps.meta.outputs.labels }}
+            org.opencontainers.image.version=${{ steps.version.outputs.value }}
+          build-args: |
+            VCS_REF=${{ github.sha }}
+            BUILD_DATE=${{ steps.version.outputs.date }}
           # 复用上一次构建的层，原生模块那一层不用每次重编
           cache-from: type=gha
           cache-to: type=gha,mode=max

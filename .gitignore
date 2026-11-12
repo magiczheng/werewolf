@@ -14,3 +14,6 @@ npm-debug.log*
 # Browser regression artifacts
 playwright-report/
 test-results/
+
+__pycache__/
+*.pyc

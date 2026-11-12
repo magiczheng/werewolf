@@ -1,0 +1,13 @@
+[Unit]
+Description=Update Werewolf after successful GitHub CI
+Wants=network-online.target
+After=network-online.target docker.service
+Requires=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/werewolf
+ExecStart=/usr/bin/python3 /opt/werewolf/deploy/auto_update.py
+TimeoutStartSec=25min
+UMask=0077
+NoNewPrivileges=true

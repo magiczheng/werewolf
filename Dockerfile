@@ -21,6 +21,10 @@ RUN npm ci --omit=dev && npm cache clean --force
 FROM node:22-bookworm-slim
 WORKDIR /app
 
+ARG VCS_REF=development
+ARG BUILD_DATE
+ENV APP_REVISION=${VCS_REF}
+ENV APP_BUILD_DATE=${BUILD_DATE}
 ENV NODE_ENV=production
 # 数据落在 /app/data，compose 会把它挂到宿主机（见 docker-compose.yml）
 ENV DB_PATH=/app/data/werewolf.db

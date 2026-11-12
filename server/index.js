@@ -5,6 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import QRCode from 'qrcode';
+import { release } from './version.js';
 import {
   PORT, PUBLIC_URL, MULTI_ACCOUNT, SEED_ACCOUNTS, SKIP_ROLE_REVEAL,
   TEST_ACCOUNT_COUNT, TEST_ACCOUNT_PASSWORD, testAccountEmail,
@@ -34,6 +35,7 @@ const testLogin = SEED_ACCOUNTS
 // 模板只读一次并缓存，避免每个请求都碰磁盘。
 const indexTemplate = fs.readFileSync(INDEX_HTML, 'utf8');
 const indexHtml = indexTemplate.replace('</head>', `<script>
+window.__WW_VERSION__=${JSON.stringify(release)};
 window.__WW_MULTI__=${MULTI_ACCOUNT ? 'true' : 'false'};
 window.__WW_SKIP_REVEAL__=${SKIP_ROLE_REVEAL ? 'true' : 'false'};
 window.__WW_TEST_LOGIN__=${testLogin ? JSON.stringify(testLogin) : 'null'};
@@ -68,6 +70,8 @@ app.get('/api/qr', async (req, res) => {
   }
 });
 
+app.get('/api/version', (_req, res) => res.set('Cache-Control', 'no-store').json(release));
+
 // 健康检查
 app.get('/api/health', (_req, res) => {
   try { db.prepare('SELECT 1').get(); res.json({ ok: true }); }
@@ -98,7 +102,7 @@ const runtime = initSocket(server);
 if (SEED_ACCOUNTS) seedAndLog(db);
 
 server.listen(PORT, () => {
-  console.log(`🐺 狼人杀平台已启动: http://localhost:${PORT}`);
+  console.log(`🐺 狼人杀 v${release.version} (${release.revision.slice(0, 7)}) 已启动: http://localhost:${PORT}`);
   if (SEED_ACCOUNTS) {
     console.log(`   ⚠️  测试模式：登录页提供 1@qq.com … ${TEST_ACCOUNT_COUNT}@qq.com 一键登录（密码 ${TEST_ACCOUNT_PASSWORD}）`);
   }

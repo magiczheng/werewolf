@@ -229,3 +229,14 @@ test('手机大厅铺满屏幕，九个座位在底部操作区上方完整可�
   await expect(page.getByRole('button', { name: '离开座位', exact: true })).toBeVisible();
   await noOverflow(page);
 });
+
+test('页面版本与服务端版本接口一致，版本响应不缓存', async ({ page, request }) => {
+  const response = await request.get('/api/version');
+  expect(response.ok()).toBe(true);
+  expect(response.headers()['cache-control']).toBe('no-store');
+  const release = await response.json();
+  expect(release.version).toMatch(/^\d+\.\d+\.\d+$/);
+  expect(typeof release.revision).toBe('string');
+  await page.goto('/');
+  await expect(page.locator('.edition')).toContainText(`v${release.version}`);
+});
