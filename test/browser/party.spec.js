@@ -106,19 +106,27 @@ test('九人真实页面：发牌、第一夜、退水顺序及投票记录', as
     }
     await host.getByRole('button', { name: '开始游戏', exact: true }).click();
     for (const p of players) { await expect(p.page.locator('.role-card .identity-art')).toBeVisible(); p.role = await p.page.locator('.role-card .rc-name').innerText(); }
-    for (const p of players) await p.page.getByRole('button', { name: '我已记住身份', exact: true }).click();
+    for (const [index, p] of players.entries()) {
+      await p.page.getByRole('button', { name: '我已记住身份', exact: true }).click();
+      if (index === 0) {
+        await expect(p.page.getByRole('button', { name: '已确认身份 ✓', exact: true })).toBeDisabled();
+        await expect(p.page.locator('.role-card')).toHaveCount(0);
+        await expect(p.page.locator('.game-board .seat[data-seat="1"] .seat-activity')).toHaveText('已确认');
+      }
+    }
     await expect(host.locator('.gt-phase')).toContainText('狼人行动');
-    await expect(host.locator('.phase-track [aria-current=step]')).toHaveText('狼人');
+    await expect(host.locator('.game-board')).toBeVisible();
+    await expect(host.locator('.tabbar')).toHaveCount(0);
+    await expect(host.locator('.seat-grid')).toHaveCount(1);
     const target = players.find(p => p.role === '村民'); const wolves = players.filter(p => p.role === '狼人');
-    await target.page.getByRole('button', { name: '板子', exact: true }).click();
     await target.page.locator('.seat-grid').evaluate(node => node.dataset.preserved = 'yes');
-    await wolves[0].page.locator(`.target-chip[data-seat="${target.seat}"]`).click();
+    await wolves[0].page.locator(`.game-board .seat.selectable[data-seat="${target.seat}"]`).click();
     await expect(target.page.locator('.seat-grid')).toHaveAttribute('data-preserved', 'yes');
-    for (const p of wolves.slice(1)) await p.page.locator(`.target-chip[data-seat="${target.seat}"]`).click();
+    for (const p of wolves.slice(1)) await p.page.locator(`.game-board .seat.selectable[data-seat="${target.seat}"]`).click();
     const witch = players.find(p => p.role === '女巫').page;
     await witch.getByRole('button', { name: `使用解药救 ${target.seat}号`, exact: true }).click();
     const seer = players.find(p => p.role === '预言家').page;
-    await seer.locator(`.target-chip[data-seat="${wolves[0].seat}"]`).click();
+    await seer.locator(`.game-board .seat.selectable[data-seat="${wolves[0].seat}"]`).click();
     await expect(host.locator('.gt-phase')).toContainText('天亮了');
     await expect(seer.locator('.seer-result')).toContainText('狼人');
     await seer.getByRole('button', { name: '按住查看身份牌' }).focus();
@@ -129,15 +137,47 @@ test('九人真实页面：发牌、第一夜、退水顺序及投票记录', as
     for (const p of players) await p.page.getByRole('button', { name: p.seat <= 3 ? '上警（参加竞选）' : '警下（不竞选）', exact: true }).click();
     await expect(host.locator('.speaker-seat')).toHaveText('1号');
     await host.getByRole('button', { name: '退水（放弃竞选）', exact: true }).click();
-    await host.getByRole('button', { name: '结束发言', exact: true }).click();
     await expect(players[1].page.locator('.speaker-seat')).toHaveText('2号');
     await players[1].page.getByRole('button', { name: '结束发言', exact: true }).click();
     await players[2].page.getByRole('button', { name: '结束发言', exact: true }).click();
-    for (const p of players.filter(p => p.seat === 1 || p.seat >= 4)) await p.page.locator('.target-chip[data-seat="2"]').click();
+    await expect(host.locator('.game-board .seat.selectable')).toHaveCount(0);
+    for (const p of players.filter(p => p.seat >= 4)) {
+      await p.page.locator('.game-board .seat.selectable[data-seat="2"]').click();
+      if (p.seat === 4) {
+        await p.page.getByRole('button', { name: '取消', exact: true }).click();
+        await expect(p.page.locator('.game-board .seat.selectable[data-seat="2"]')).toBeEnabled();
+        await p.page.locator('.game-board .seat.selectable[data-seat="2"]').click();
+      }
+      await p.page.getByRole('button', { name: '确认投票', exact: true }).click();
+      if (p.seat === 4) {
+        await expect(host.locator('.game-board .seat[data-seat="4"] .seat-activity')).toHaveText('已投票');
+        await expect(host.locator('.game-board .seat[data-seat="5"] .seat-activity')).toHaveText('待投票');
+      }
+    }
     await expect(host.locator('.gt-phase')).toContainText('白天发言');
-    await host.getByRole('button', { name: '播报', exact: true }).click();
-    await host.locator('.replay-panel > summary').click();
-    await expect(host.locator('.vote-record')).toContainText('警长投票');
+    await host.getByRole('button', { name: '投票记录', exact: true }).click();
+    await expect(host.locator('.vote-record').filter({ hasText: '警长投票' })).toBeVisible();
+    await host.locator('.game-board .seat.selectable[data-seat="4"]').click();
+    await expect(players[4].page.locator('.game-board .seat[data-seat="4"] .seat-activity')).toHaveText('正在发言');
+    await players[3].page.getByRole('button', { name: '结束我的发言', exact: true }).click();
+    await expect(host.locator('.game-board .seat[data-seat="4"] .seat-activity')).toHaveText('已发言');
+    await host.getByRole('button', { name: '进入放逐投票', exact: true }).click();
+    for (const p of players) {
+      const ballot = p.seat === 2 ? 0 : [1, 3, 4, 9].includes(p.seat) ? 8 : 9;
+      if (ballot) await p.page.locator(`.game-board .seat.selectable[data-seat="${ballot}"]`).click();
+      else await p.page.getByRole('button', { name: '弃票', exact: true }).click();
+      await p.page.getByRole('button', { name: '确认投票', exact: true }).click();
+    }
+    await expect(host.locator('.gt-phase')).toContainText('PK');
+    for (const p of players.filter(p => p.seat >= 8)) {
+      await expect(p.page.locator('.game-board .seat.selectable')).toHaveCount(0);
+      await expect(p.page.locator('.game-actions')).toContainText('本轮不能投票');
+    }
+    for (const p of players.filter(p => p.seat <= 7)) {
+      await p.page.locator('.game-board .seat.selectable[data-seat="8"]').click();
+      await p.page.getByRole('button', { name: '确认投票', exact: true }).click();
+    }
+    await expect(host.locator('.vote-record').filter({ hasText: '放逐 PK' })).toBeVisible();
     await noOverflow(host);
   } finally { for (const context of contexts) await context.close(); }
 });
@@ -239,4 +279,17 @@ test('页面版本与服务端版本接口一致，版本响应不缓存', async
   expect(typeof release.revision).toBe('string');
   await page.goto('/');
   await expect(page.locator('.edition')).toContainText(`v${release.version}`);
+});
+
+test('存储写入被浏览器拒绝时，收起引导仍有反馈且不阻塞操作', async ({ page }) => {
+  await register(page); await createRoom(page);
+  await page.evaluate(() => {
+    Storage.prototype.setItem = () => { throw new Error('storage unavailable'); };
+    Storage.prototype.removeItem = () => { throw new Error('storage unavailable'); };
+  });
+  await page.getByRole('button', { name: '我知道了', exact: true }).click();
+  await expect(page.locator('.quick-guide')).toHaveCount(0);
+  await expect(page.locator('#toast')).toContainText('引导已收起');
+  await page.getByRole('button', { name: '1号座位，点击入座', exact: true }).click();
+  await expect(page.locator('.seat.mine .seat-no')).toHaveText('1');
 });

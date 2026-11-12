@@ -1,3 +1,4 @@
+import { activityFor } from './activity.js';
 import { randomUUID } from 'node:crypto';
 import { normalizeRules } from '../public/js/gameRules.js';
 // 狼人杀游戏引擎 —— 纯逻辑、无 I/O，可单测。
@@ -938,11 +939,16 @@ export class Room {
       this.sheriffState.onPodium.add(seat);
       this.sheriffState.withdrawn.delete(seat);
     } else {
-      this.sheriffState.onPodium.delete(seat);
+      // Keep the original candidacy: withdrawing must never create a sheriff vote.
       this.sheriffState.withdrawn.add(seat);
     }
     if (this.phase === PHASE.SHERIFF_SPEECH) this.phaseState.candidates = this._activeCandidates();
     this.touch();
+    if (this.phase === PHASE.SHERIFF_SPEECH && !this.settings.judgeMode) {
+      const active = this._activeCandidates();
+      if (active.length <= 1) this._enterSheriffSpeech();
+      else if (!onPodium && this.phaseState.speakerSeat === seat) this._nextSpeechOrVote();
+    }
     this._maybeComplete();
     return { ok: true };
   }
@@ -972,7 +978,7 @@ export class Room {
 
   _activeCandidates() {
     return [...this.sheriffState.onPodium]
-      .filter(s => !this.sheriffState.withdrawn.has(s))
+      .filter(s => !this.sheriffState.withdrawn.has(s) && this._playerAt(s)?.alive)
       .sort((a, b) => a - b);
   }
 
@@ -1014,12 +1020,14 @@ export class Room {
     if (!p || !p.alive || !p.seat) return { error: '无效玩家' };
     if (this.phase !== PHASE.SHERIFF_VOTE && this.phase !== PHASE.SHERIFF_PK) return { error: '当前不是警长投票' };
     if (!this.sheriffState) return { error: '状态异常' };
-    if (this.sheriffState.onPodium.has(p.seat)) return { error: '警上玩家不能投票' };
+    if (this.sheriffState.onPodium.has(p.seat)) return { error: '上警及退水玩家均不能投警长票' };
     // 一经提交不可修改（线下投票不该反复改票）
     if (this.sheriffState.votes.has(playerId)) return { error: '已投票，不可修改' };
-    target = Number(target) || 0;
+    target = Number(target);
+    if (!Number.isInteger(target) || target < 0) return { error: '目标无效' };
     if (target === p.seat) return { error: '不能投给自己' };
     if (target !== 0) {
+      if (!this._validTarget(target)) return { error: '目标无效' };
       const allowed = this.phase === PHASE.SHERIFF_PK ? this.sheriffState.pkCandidates : this._activeCandidates();
       if (!allowed.includes(target)) return { error: '目标无效' };
     }
@@ -1082,6 +1090,30 @@ export class Room {
     this._processQueue();
   }
 
+  setSpeaker(playerId, seat) {
+    if (this.phase !== PHASE.DAY_TALK || this.gameOver) return { error: '当前不是白天发言阶段' };
+    if (playerId !== this.hostPlayerId && playerId !== this.judgePlayerId) return { error: '只有房主或法官可以指定发言者' };
+    if (!this._validTarget(Number(seat))) return { error: '请选择存活玩家' };
+    seat = Number(seat);
+    if (seat === this.phaseState.speakerSeat) return { ok: true };
+    const spoken = new Set(this.phaseState.spoken || []);
+    if (this.phaseState.speakerSeat) spoken.add(this.phaseState.speakerSeat);
+    spoken.delete(seat);
+    this.phaseState.spoken = [...spoken]; this.phaseState.speakerSeat = seat;
+    this.phaseId = randomUUID();
+    this._news(`${seat}号 开始白天发言`); this.touch();
+    return { ok: true };
+  }
+
+  finishSpeech(playerId) {
+    const p = this.players.get(playerId);
+    if (this.phase !== PHASE.DAY_TALK || !p?.alive || this.phaseState.speakerSeat !== p.seat) return { error: '当前未轮到你发言' };
+    this.phaseState.spoken = [...new Set([...(this.phaseState.spoken || []), p.seat])];
+    this.phaseState.speakerSeat = null; this.phaseId = randomUUID();
+    this._news(`${p.seat}号 已结束白天发言`); this.touch();
+    return { ok: true };
+  }
+
   // ---------- 白天：放逐投票 ----------
 
   _enterDayVote() {
@@ -1090,7 +1122,8 @@ export class Room {
   }
 
   _voteEligible() {
-    return this._livePlayers().filter(p => !p.idiotFlipped);
+    return this._livePlayers().filter(p => !p.idiotFlipped
+      && (this.phase !== PHASE.VOTE_PK || !this.voteState?.pkCandidates.includes(p.seat)));
   }
 
   exileVote(playerId, target) {
@@ -1099,12 +1132,15 @@ export class Room {
     if (this.phase !== PHASE.DAY_VOTE && this.phase !== PHASE.VOTE_PK) return { error: '当前不是放逐投票' };
     if (p.idiotFlipped) return { error: '白痴失去投票权' };
     if (!this.voteState) return { error: '状态异常' };
+    if (this.phase === PHASE.VOTE_PK && this.voteState.pkCandidates.includes(p.seat)) return { error: 'PK 玩家不能参与本轮投票' };
     // 一经提交不可修改（线下投票不该反复改票）
     if (this.voteState.votes.has(playerId)) return { error: '已投票，不可修改' };
-    target = Number(target) || 0;
+    target = Number(target);
+    if (!Number.isInteger(target) || target < 0) return { error: '目标无效' };
     if (target === p.seat) return { error: '不能投给自己' };
     if (target !== 0) {
       if (this._playerAt(target)?.idiotFlipped) return { error: '已翻牌的白痴不能被放逐' };
+      if (!this._validTarget(target)) return { error: '目标无效' };
       if (this.phase === PHASE.VOTE_PK) {
         if (!this.voteState.pkCandidates.includes(target)) return { error: '目标无效' };
       } else if (!this._validTarget(target)) {
@@ -1167,9 +1203,12 @@ export class Room {
     this.voteState.votes.clear(); // 进入 PK 需重新投票
     this._news(`${winners.join('、')}号 平票，进入 PK`);
     this._startPhase(PHASE.VOTE_PK, { pkCandidates: winners });
+    this._maybeComplete(); // All living players may be PK candidates: no eligible voter must not deadlock.
   }
 
   _resolvePkVote() {
+    const eligible = new Set(this._voteEligible().map(p => p.playerId));
+    for (const pid of this.voteState.votes.keys()) if (!eligible.has(pid)) this.voteState.votes.delete(pid);
     this._recordVotes('放逐 PK', this.voteState.votes, true);
     const tally = this._tally(this.voteState.votes, this._sheriffWeight);
     if (tally.size === 0) {
@@ -1285,7 +1324,8 @@ export class Room {
     if (this.phase !== PHASE.HUNTER_SHOOT) return { error: '当前不是开枪阶段' };
     if (this.phaseState.seat !== p.seat) return { error: '不是你开枪' };
     if (this.phaseState.done) return { error: '已结算' };
-    target = Number(target) || 0;
+    target = Number(target);
+    if (!Number.isInteger(target) || target < 0) return { error: '目标无效' };
     if (target !== 0) {
       if (!this._validTarget(target)) return { error: '目标无效' };
       const tp = this._playerAt(target);
@@ -1338,7 +1378,7 @@ export class Room {
 
   roleConfirm(playerId) {
     const p = this.players.get(playerId);
-    if (!p) return { error: '无效玩家' };
+    if (!p || !p.seat || !p.alive) return { error: '无效玩家' };
     if (this.phase !== PHASE.ROLE_REVEAL) return { error: '当前不是确认身份阶段' };
     p.roleReady = true;
     this.touch();
@@ -1410,6 +1450,7 @@ export class Room {
       case 'guardProtect': {
         if (this.phase !== PHASE.NIGHT_GUARD) return { error: '现在不是守卫行动阶段' };
         if (p.role !== 'guard') return { error: '你不是守卫' };
+        if (n.guardTarget != null) return { error: '今晚已完成守护' };
         const target = Number(action.target);
         if (!this._validTarget(target, { exclude: [p.guardLastTarget || -1] })) return { error: '目标无效（不能连续守护同一人）' };
         n.guardTarget = target;
@@ -1559,6 +1600,7 @@ export class Room {
       gameOver: this.gameOver,
       phase: this.phase,
       phaseState: this._publicPhaseState(),
+      activity: activityFor(this, me),
       day: this.day,
       news: this.news,
       sheriff: this.sheriff,
@@ -1665,9 +1707,12 @@ export class Room {
       // 今夜的查验结果，供预言家的操作卡片直接展示（不用 toast——一闪就没了）
       seerResult: (p.role === 'seer' && this.night) ? this.night.seerResult : null,
       guardLastTarget: p.guardLastTarget,
+      guardActed: p.role === 'guard' && this.night?.guardTarget != null,
+      guardTarget: p.role === 'guard' ? this.night?.guardTarget : null,
       witch: null,
       wolfVote: null,
-      onPodium: this.sheriffState ? this.sheriffState.onPodium.has(p.seat) : false,
+      onPodium: !!(this.sheriffState?.onPodium.has(p.seat) && !this.sheriffState.withdrawn.has(p.seat)),
+      ranForSheriff: !!this.sheriffState?.onPodium.has(p.seat),
       withdrawn: this.sheriffState ? this.sheriffState.withdrawn.has(p.seat) : false,
       canDeclare: (this.phase === PHASE.SHERIFF_DECLARE || this.phase === PHASE.SHERIFF_SPEECH) && p.alive,
       sheriffCanVote: (this.phase === PHASE.SHERIFF_VOTE || this.phase === PHASE.SHERIFF_PK)
@@ -1678,8 +1723,9 @@ export class Room {
         ? this.sheriffState.votes.get(p.playerId) : null,
       hasVoted: this.voteState ? this.voteState.votes.has(p.playerId) : false,
       myVote: this.voteState ? (this.voteState.votes.get(p.playerId) || 0) : 0,
-      canVote: (this.phase === PHASE.DAY_VOTE || this.phase === PHASE.VOTE_PK) && p.alive && !p.idiotFlipped,
+      canVote: (this.phase === PHASE.DAY_VOTE || this.phase === PHASE.VOTE_PK) && this._voteEligible().some(v => v.playerId === p.playerId),
       canEndPhase: this._canEndPhase(p),
+      canEndSpeech: this.phase === PHASE.DAY_TALK && p.alive && this.phaseState.speakerSeat === p.seat,
       // 猎人开枪阶段：只让猎人本人知道轮到谁（座位号对全场保密，见 _publicPhaseState）
       canShoot: this.phase === PHASE.HUNTER_SHOOT
         && this.phaseState && this.phaseState.seat === p.seat,

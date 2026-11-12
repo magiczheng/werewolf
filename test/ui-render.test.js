@@ -887,3 +887,26 @@ describe('法官流程与女巫用药反馈', () => {
     assert.equal(findByClass(root, 'target-grid').length, 0);
   });
 });
+
+describe('同页座位图与提交反馈', () => {
+  test('只有一张座位图且没有对局 Tab，目标选择器委托给座位', () => {
+    const root = renderAndAssert('single-board', makeState({ phase: 'dayVote', private: privateFor({ canVote: true }) }));
+    assert.equal(findByClass(root, 'seat-grid').length, 1);
+    assert.equal(findByClass(root, 'tabbar').length, 0);
+    assert.ok(findByClass(root, 'seat').some(node => node.tagName === 'BUTTON'));
+    assert.ok(findByClass(root, 'target-grid').every(node => node.hidden));
+    assert.ok(findByClass(root, 'replay-panel').length === 1);
+  });
+  test('已确认状态来自私有快照，即使 me 没有 roleReady 也立即锁定并收起身份', () => {
+    const root = renderAndAssert('private-role-ready', makeState({ phase: 'roleReveal', private: privateFor({ roleReady: true }) }));
+    assert.equal(findByClass(root, 'role-card').length, 0);
+    assert.ok(findByClass(root, 'btn-primary').some(node => node.disabled && /已确认身份/.test(textOf(node))));
+  });
+  test('座位展示待投与发言提示，不需要切页寻找', () => {
+    const root = renderAndAssert('seat-progress', makeState({ phase: 'sheriffSpeech', activity: {
+      label: '竞选发言', total: 0, completed: 0, pending: [2], seats: [{ seat: 2, state: 'speaking', label: '正在发言' }],
+    }, phaseState: { candidates: [2, 3], speakerSeat: 2 } }));
+    assert.equal(findByClass(root, 'activity-speaking').length, 1);
+    assert.match(findByClass(root, 'pending-seats').map(textOf).join(''), /2号/);
+  });
+});

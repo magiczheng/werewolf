@@ -122,8 +122,9 @@ export class FakeNode {
   /** 仅支持 [attr] 形式的选择器——updateTimers 只需要这一种 */
   querySelectorAll(sel) {
     const m = /^\[([\w-]+)\]$/.exec(sel);
-    if (!m) return [];
-    const attr = m[1];
+    const className = /^\.([\w-]+)$/.exec(sel)?.[1];
+    if (!m && !className) return [];
+    const attr = m?.[1] || '';
     // 真实浏览器里 dataset.deadline = x 会同时产生 data-deadline 属性；
     // 这里的 dataset 是普通对象，所以要把 data-foo-bar 折算成 camelCase 再查。
     const camel = attr.startsWith('data-')
@@ -133,7 +134,7 @@ export class FakeNode {
     const walk = (n) => {
       for (const c of n.childNodes) {
         if (c.nodeType !== 1) continue;
-        if (c.hasAttribute(attr) || (attr in c.dataset) || (camel && camel in c.dataset)) out.push(c);
+        if (className ? c.classList.contains(className) : c.hasAttribute(attr) || (attr in c.dataset) || (camel && camel in c.dataset)) out.push(c);
         walk(c);
       }
     };

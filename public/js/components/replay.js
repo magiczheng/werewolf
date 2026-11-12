@@ -2,10 +2,20 @@ import { el } from '../ui.js';
 
 export function replayPanel(s) {
   const children = [];
-  for (const round of s.voteHistory || []) children.push(el('div', { class: 'vote-record' }, [
-    el('h3', { class: 'small' }, `第 ${round.day} 天 · ${round.kind}`),
-    el('div', { class: 'cfg-chips' }, round.ballots.map(b => el('span', { class: 'cfg-chip' }, `${b.seat || '—'}号 → ${b.target ? b.target + '号' : '弃票'}${b.weight !== 1 ? `（${b.weight}票）` : ''}`))),
-  ]));
+  for (const round of [...(s.voteHistory || [])].reverse()) {
+    const totals = new Map(); let abstained = 0;
+    for (const ballot of round.ballots) {
+      if (!ballot.target) abstained++;
+      else totals.set(ballot.target, (totals.get(ballot.target) || 0) + ballot.weight);
+    }
+    const summary = [...totals].sort((a, b) => b[1] - a[1]).map(([seat, votes]) => `${seat}号 ${votes}票`);
+    if (abstained) summary.push(`弃票 ${abstained}人`);
+    children.push(el('div', { class: 'vote-record' }, [
+      el('h3', { class: 'small' }, `第 ${round.day} 天 · ${round.kind}`),
+      el('p', { class: 'vote-result' }, summary.join(' · ') || '本轮无有效票'),
+      el('div', { class: 'cfg-chips' }, round.ballots.map(b => el('span', { class: 'cfg-chip' }, `${b.seat || '—'}号 → ${b.target ? b.target + '号' : '弃票'}${b.weight !== 1 ? `（${b.weight}票）` : ''}`))),
+    ]));
+  }
   if (!s.voteHistory?.length) children.push(el('p', { class: 'hint' }, '本局尚无已完成的投票。投票结束后在这里查看票型。'));
   if (s.gameOver && s.replay?.length) children.push(el('div', { class: 'replay-timeline col' }, [
     el('div', { class: 'panel-title' }, '本局时间线'),

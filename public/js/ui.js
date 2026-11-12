@@ -66,7 +66,20 @@ export function el(tag, attrs = {}, children = []) {
     // 事件监听：键名是事件名（或 onXxx 形式）且值为函数
     const evName = k.startsWith('on') && k.length > 2 ? k.slice(2).toLowerCase() : k;
     if (typeof v === 'function' && EVENTS.has(evName)) {
-      node.addEventListener(evName, v);
+      node.addEventListener(evName, evName === 'click' && tag === 'button' ? (event) => {
+        if (node._clickPending) return;
+        const wasDisabled = node.disabled;
+        const result = v(event);
+        if (!result || typeof result.then !== 'function') return result;
+        node._clickPending = true;
+        setPending(node, true);
+        return Promise.resolve(result).catch(error => { toast(error?.message || '操作未完成，请重试', true); })
+          .finally(() => {
+            node._clickPending = false;
+            if (node.getAttribute('aria-busy') === 'true') { setPending(node, false); node.disabled = wasDisabled; }
+            else node.classList.remove('is-loading');
+          });
+      } : v);
       continue;
     }
 
@@ -219,7 +232,10 @@ export function confirmDialog(title, body, opts = {}) {
       settled = true; window.removeEventListener('keydown', onKey);
       root.innerHTML = ''; document.body.classList.remove('modal-open');
       activeDialog = null;
-      if (previousFocus?.isConnected) previousFocus.focus?.({ preventScroll: true });
+      const restoreFocus = () => { if (previousFocus?.isConnected && !previousFocus.disabled) previousFocus.focus?.({ preventScroll: true }); };
+      restoreFocus();
+      // Async invokers remain disabled until their cancelled promise settles.
+      requestAnimationFrame(restoreFocus);
       resolve(value);
     };
     const cancel = el('button', { class: 'btn-ghost grow', type: 'button', click: () => close(false) }, opts.cancelText || '取消');

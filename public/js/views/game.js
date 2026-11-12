@@ -1,4 +1,4 @@
-// 游戏页：顶部阶段条 + 底部 Tab（操作 / 板子 / 播报 / 法官）
+// 对局以一张座位图呈现：进度、选择目标、操作和投票记录都在同页。
 import { el, toast, confirmDialog, dismissDialog } from '../ui.js';
 import { net, store } from '../net.js';
 import { PHASE_NAME, isNightPhase } from '../constants.js';
@@ -20,69 +20,28 @@ import {
 
 // 模块作用域：跨重渲染保留。
 // net.on 会在每次服务端推送时重跑 renderGame()，这些状态若放在函数内会被重置。
-let activeTab = 'actions';
+let boardMode = '';
 let lastPhase = '';
 let lastStage = '';
-let lastReadNewsId = 0;
 
-const emit = (event, payload) => net.emit(event, payload).catch(e => { toast(e.message, true); return { error: e.message }; });
+const emit = async (event, payload) => {
+  try {
+    const result = await net.emit(event, payload);
+    const messages = { confirmRole: '身份已确认', declare: payload?.onPodium ? '已上警' : '已提交退水或不上警',
+      exileVote: '放逐投票已提交，不可修改', sheriffVote: '警长投票已提交，不可修改',
+      setSpeaker: '已标记当前发言者', finishSpeech: '已结束本次发言', nightAction: '行动已提交', endPhase: '阶段已结束', shoot: '开枪选择已提交', handoff: '警徽处理已提交', judge: '法官操作已提交' };
+    if (messages[event]) toast(messages[event]);
+    return result;
+  } catch (e) { toast(e.message, true); return { error: e.message }; }
+};
 
 // 注：本应用没有阶段倒计时，因此没有计时器心跳。
 // 阶段何时结束由「当前操作人点结束」决定（见 endPhase / canEndPhase）。
 
-// Public stage landmarks; they contain no private identities or hidden timers.
-function phaseTrack(s) {
-  let steps;
-  let current;
-  if (isNightPhase(s.phase)) {
-    steps = [['nightGuard', '守卫', 'guard'], ['nightWolves', '狼人', 'wolf'], ['nightWitch', '女巫', 'witch'], ['nightSeer', '预言家', 'seer']]
-      .filter(([id, , role]) => id === s.phase || (s.settings.roles[role] || 0) + (role === 'wolf' ? s.settings.roles.whiteWolfKing || 0 : 0) > 0);
-    current = steps.findIndex(([id]) => id === s.phase);
-  } else if (s.phase === 'roleReveal') { steps = [['roleReveal', '确认身份'], ['night', '进入夜晚']]; current = 0; }
-  else if (s.gameOver) { steps = [['end', '本局结束'], ['replay', '查看复盘']]; current = 0; }
-  else {
-    steps = [['dawn', '天亮'], ['sheriff', '警长'], ['talk', '发言'], ['vote', '投票']];
-    current = s.phase === 'dayStart' ? 0 : s.phase.startsWith('sheriff') ? 1 : s.phase === 'dayTalk' ? 2 : 3;
-  }
-  return el('ol', { class: 'phase-track', 'aria-label': '本轮流程' }, steps.map(([id, label], i) => el('li', { class: 'phase-step' + (i === current ? ' current' : i < current ? ' complete' : ''), ...(i === current ? { 'aria-current': 'step' } : {}) }, [el('span', { class: 'phase-step-dot', 'aria-hidden': 'true' }), el('span', {}, label)])));
-}
-
-// ---------- 当前玩家是否有可执行动作 ----------
-// 用于「阶段切换时自动跳回操作页」：夜里狼人若正停在播报页，会错过刀人。
-function hasAction(s) {
-  const me = s.me;
-  const priv = s.private || {};
-  const p = s.phase;
-  const ps = s.phaseState || {};
-
-  if (!me.alive && !['hunterShoot', 'sheriffHandoff', 'lastWords'].includes(p)) return false;
-
-  switch (p) {
-    case 'roleReveal': return true;
-    case 'nightGuard': return me.role === 'guard' && me.alive;
-    case 'nightWolves': return me.isWolf && me.alive;
-    case 'nightWitch': return me.role === 'witch' && me.alive;
-    case 'nightSeer': return me.role === 'seer' && me.alive;
-    case 'sheriffDeclare': return true;
-    case 'sheriffSpeech': return !!priv.onPodium;
-    case 'sheriffVote':
-    case 'sheriffPk': return !!priv.sheriffCanVote;
-    case 'dayTalk': return me.alive;
-    case 'dayVote':
-    case 'votePk': return !!priv.canVote;
-    case 'lastWords':
-    case 'sheriffHandoff': return ps.seat === me.seat;
-    // 猎人阶段不公开座位号，只能靠私有字段判断（见 engine 的 _publicPhaseState）
-    case 'hunterShoot': return !!priv.canShoot;
-    default: return false;
-  }
-}
-
 export function resetGameView() {
-  activeTab = 'actions';
+  boardMode = '';
   lastPhase = '';
   lastStage = '';
-  lastReadNewsId = 0;
   // 浮层挂在 body 上，不随 #app 重建而消失，离开游戏页时必须主动收起
   hidePeek();
 }
@@ -105,6 +64,7 @@ function actionsPanel(s) {
   const me = s.me;
   const priv = s.private || {};
   const phase = s.phase;
+  if (me.isJudge) return [el('p', { class: 'hint' }, '法官可在座位图旁推进阶段，详细信息与手动干预在下方。')];
   const aliveTargets = s.players.filter((p) => p.name && p.alive);
   const out = [];
 
@@ -153,7 +113,8 @@ function actionsPanel(s) {
         async (seat) => {
           const yes = await confirmDialog('确认自爆？',
             `自爆并带走 ${seat}号，当天白天立刻结束。此操作不可撤销。`, { confirmText: '自爆' });
-          if (yes) emit('blast', { target: seat });
+          if (yes) return emit('blast', { target: seat });
+          return { cancelled: true };
         },
       ));
     } else {
@@ -168,7 +129,8 @@ function actionsPanel(s) {
       }, '💣 自爆'));
     }
 
-    out.push(el('div', { class: 'card glass col blast-box' }, [
+    out.push(el('details', { class: 'card glass col blast-box' }, [
+      el('summary', {}, '特殊操作'),
       el('div', { class: 'panel-title' }, '💣 狼人自爆'),
       body,
     ]));
@@ -201,14 +163,16 @@ function actionsPanel(s) {
       ]));
 
       out.push(el('button', {
-        class: 'btn-primary btn-big' + (me.roleReady ? ' done' : ''), type: 'button',
-        disabled: !!me.roleReady, click: () => emit('confirmRole'),
-      }, me.roleReady ? '已确认身份 ✓' : '我已记住身份'));
+        class: 'btn-primary btn-big' + (priv.roleReady ? ' done' : ''), type: 'button',
+        disabled: !!priv.roleReady, click: () => emit('confirmRole'),
+      }, priv.roleReady ? '已确认身份 ✓' : '我已记住身份'));
       break;
     }
 
     case 'nightGuard':
-      if (me.role === 'guard' && me.alive) {
+      if (me.role === 'guard' && me.alive && priv.guardActed) {
+        section('守护已提交', el('p', { class: 'hint' }, `已守护 ${priv.guardTarget}号，等待法官推进。`));
+      } else if (me.role === 'guard' && me.alive) {
         section('选择今晚守护的目标', targetPicker(
           aliveTargets.filter((t) => t.seat !== priv.guardLastTarget),
           priv.guardLastTarget ? `不能连续两晚守护同一人（昨晚守了 ${priv.guardLastTarget}号）` : '守护可挡下狼刀',
@@ -338,15 +302,17 @@ function actionsPanel(s) {
 
     case 'sheriffDeclare':
       section('是否参加警长竞选', el('div', { class: 'col' }, [
-        el('div', { class: 'hint' }, priv.onPodium ? '你已上警' : (priv.withdrawn ? '你已在警下' : '上警后需要发言，警下玩家投票选你')),
+        el('div', { class: 'hint' }, priv.onPodium ? '你已上警' : (priv.withdrawn ? '你已在警下' : '只有从未上警的玩家可投警长票；退水后也不能投票')),
         el('button', {
           class: 'btn-primary', type: 'button',
           click: () => emit('declare', { onPodium: true }),
-        }, priv.onPodium ? '保持上警' : '上警（参加竞选）'),
+          disabled: !!priv.onPodium,
+        }, priv.onPodium ? '已上警 ✓' : '上警（参加竞选）'),
         el('button', {
           class: 'btn-ghost', type: 'button',
           click: () => emit('declare', { onPodium: false }),
-        }, '警下（不竞选）'),
+          disabled: !!priv.withdrawn,
+        }, priv.onPodium ? '退水（本次不能投警长票）' : priv.withdrawn ? '已选择不上警 ✓' : '警下（不竞选）'),
       ]));
       break;
 
@@ -385,19 +351,20 @@ function actionsPanel(s) {
             candPlayers.filter((c) => c.seat !== me.seat),  // 不能投给自己
             isPk ? '仍平票则警徽流失' : '警长拥有 1.5 票 · 投出后不可修改',
             (seat) => emit('sheriffVote', { target: seat }),
-            { allowEmpty: true, emptyText: '弃票', onEmpty: () => emit('sheriffVote', { target: 0 }) },
+            { confirm: true, allowEmpty: true, emptyText: '弃票', onEmpty: () => emit('sheriffVote', { target: 0 }) },
           ));
         }
       } else {
-        waiting('等待警下玩家投票…');
+        waiting(priv.ranForSheriff ? '你曾上警或已退水，本次不能投警长票' : '等待警下玩家投票…');
       }
       break;
     }
 
     case 'dayTalk':
       section('白天发言', el('div', { class: 'col' }, [
-        el('div', { class: 'hint' }, '在场内自由讨论，讨论完由房主点「进入放逐投票」'),
+        el('div', { class: 'hint' }, '房主可点击座位标记发言者；也可自由讨论，结束后由房主发起放逐投票'),
       ]));
+      if (priv.canEndSpeech) out.push(el('button', { class: 'btn-primary', type: 'button', click: () => emit('finishSpeech') }, '结束我的发言'));
       if (priv.canEndPhase) endButton('进入放逐投票');
       break;
 
@@ -424,14 +391,14 @@ function actionsPanel(s) {
               : '票数最高者被放逐，平票会进入 PK · 投出后不可修改',
             (seat) => emit('exileVote', { target: seat }),
             {
-              allowEmpty: true,
+              confirm: true, allowEmpty: true,
               emptyText: '弃票',
               onEmpty: () => emit('exileVote', { target: 0 }),
             },
           ));
         }
       } else {
-        waiting(me.idiotFlipped ? '你已翻牌，失去投票权' : '等待投票…');
+        waiting(me.idiotFlipped ? '你已翻牌，失去投票权' : isPk && pkCands.includes(me.seat) ? '你在 PK 台上，本轮不能投票' : '等待投票…');
       }
       break;
     }
@@ -524,168 +491,122 @@ function gameOverCard(s) {
 export function renderGame(root) {
   const s = net.state;
   const me = s.me;
-  const phase = s.phase;
-
-  const phaseChanged = phase !== lastPhase || (!!s.phaseId && s.phaseId !== lastStage);
-  if (phaseChanged) {
-    lastPhase = phase;
-    lastStage = s.phaseId || phase;
-    dismissDialog();
-    window.scrollTo(0, 0);
-    // 阶段变了、且当前玩家有事可做（要操作，或该由他点结束）→ 拉回操作页。
-    // 否则夜里轮到他行动时，人还停在播报页，整局就卡住了。
-    if (hasAction(s) || (s.private && s.private.canEndPhase)) activeTab = 'actions';
-    // 阶段变了，手上可能还按着身份牌浮层——收起，避免上面的信息已经过期
-    hidePeek();
-  }
-
-  const latestNewsId = s.news?.at(-1)?.id || 0;
-  if (activeTab === 'news') lastReadNewsId = latestNewsId;
-  const tabs = [
-    { id: 'actions', label: '操作', icon: '🎯', badge: hasAction(s) },
-    { id: 'board', label: '板子', icon: '🪑' },
-    { id: 'news', label: '播报', icon: '📢', badge: latestNewsId > lastReadNewsId },
-  ];
-  // 必须用 me.isJudge 判断，不能用 s.judge：
-  // 法官模式下非法官玩家的 s.judge 是 {name, connected}（没有 players），
-  // 拿它当开关会把普通玩家送进法官面板并因 j.players 未定义而整页崩掉。
-  const isJudge = !!(me.isJudge && s.judge && s.judge.players);
-  if (isJudge && phaseChanged) activeTab = 'judge';
-  if (isJudge) tabs.push({ id: 'judge', label: '法官', icon: '👨‍⚖️' });
-  if (!tabs.some((t) => t.id === activeTab)) activeTab = 'actions'; // 法官模式关闭时回落到操作页
-
-  // ---------- 顶栏 ----------
-  // 没有倒计时，右侧改为显示「本阶段在等谁」：确认进度 / 等待法官 / 等待某人结束。
   const priv = s.private || {};
-  let gtRight;
-  if (s.roleConfirm) {
-    const { ready, total } = s.roleConfirm;
-    gtRight = el('div', { class: 'confirm-progress' }, [
-      el('span', { class: 'cp-count' }, `${ready}/${total}`),
-      el('span', { class: 'cp-label' }, ready >= total ? '已就绪' : '已确认'),
-    ]);
-  } else if (s.gameOver) {
-    gtRight = el('span', { class: 'gt-waiting' }, '已结束');
-  } else if (s.judgeMode) {
-    gtRight = el('span', { class: 'gt-waiting' }, '等待法官推进');
-  } else if (!priv.canEndPhase && !hasAction(s)) {
-    // 既不能结束、也没有动作可做 —— 说明在等别人
-    gtRight = el('span', { class: 'gt-waiting' }, '等待中');
-  } else {
-    gtRight = null;
+  const phase = s.phase;
+  const changed = phase !== lastPhase || (!!s.phaseId && s.phaseId !== lastStage);
+  if (changed) {
+    lastPhase = phase; lastStage = s.phaseId || phase; boardMode = '';
+    dismissDialog(); hidePeek(); window.scrollTo(0, 0);
   }
-
+  const isJudge = !!(me.isJudge && s.judge?.players);
+  const judgeNode = isJudge ? judgePanel(s, emit) : el('div', { hidden: true });
+  const actionNodes = s.gameOver ? [gameOverCard(s)] : [
+    phase === 'roleReveal' && !isJudge && !priv.roleReady ? roleCard(s) : null,
+    ...actionsPanel(s),
+  ].filter(Boolean);
+  const selections = [];
+  for (const card of actionNodes) for (const picker of card.querySelectorAll?.('.picker') || []) {
+    const selection = picker._boardSelection;
+    if (!selection) continue;
+    const title = card.querySelector?.('.panel-title');
+    selection.label = title?.textContent || [...(title?.childNodes || [])].map(n => n.textContent).join('') || '选择目标';
+    selection.danger = card.classList.contains('blast-box');
+    selection.useBoard();
+    selections.push(selection);
+    picker.appendChild(el('button', { class: 'btn-ghost picker-mode', type: 'button', click: () => {
+      boardMode = selection.label; renderGame(root);
+      root.querySelector?.('.game-board')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+    } }, `在座位图选择 · ${selection.label}`));
+  }
+  const speechSelection = phase === 'dayTalk' && (me.isHost || isJudge) ? {
+    label: '标记当前发言人', targets: s.players.filter(p => p.name && p.alive), selected: s.phaseState.speakerSeat || 0,
+    choose: seat => emit('setSpeaker', { seat }), subscribe: fn => fn({ selected: s.phaseState.speakerSeat || 0, submitting: false }),
+  } : null;
+  const selection = selections.find(item => item.label === boardMode) || selections.filter(item => !item.danger).at(-1) || speechSelection;
+  // Keep the primary decisions next to the seats, without a second target grid.
+  const quickButtons = [];
+  const collectButtons = node => {
+    for (const child of [...node.children]) {
+      if (child.tagName === 'BUTTON' && !child.classList.contains('target-chip') && !child.classList.contains('picker-mode')) {
+        child.remove(); quickButtons.push(child);
+      } else collectButtons(child);
+    }
+  };
+  const informationNodes = actionNodes.filter(node => {
+    if (node.tagName === 'BUTTON') { quickButtons.push(node); return false; }
+    if (!node.classList.contains('blast-box') && !node.classList.contains('gameover')) collectButtons(node);
+    return true;
+  });
+  if (isJudge) {
+    const advance = judgeNode.children[0]?.querySelector?.('.btn-primary');
+    if (advance) { advance.remove(); quickButtons.push(advance); }
+  }
+  const activity = s.activity || { label: s.judgeMode ? '等待法官推进' : PHASE_NAME[phase], seats: [], pending: [], completed: 0, total: 0 };
+  const pending = activity.pending.map(seat => `${seat}号${s.players.find(p => p.seat === seat)?.connected === false ? '（离线）' : ''}`);
+  const progress = activity.total ? `已完成 ${activity.completed}/${activity.total}` : activity.label;
+  const wait = pending.length ? `等待：${pending.join('、')}`
+    : activity.total && activity.completed >= activity.total ? (s.judgeMode ? '已完成操作，等待法官推进' : '已完成，正在进入下一阶段') : s.judgeMode ? '等待法官确认推进' : activity.label;
+  const oldView = root.children[0];
+  const sameView = oldView?.classList.contains('game-view');
   const topbar = el('div', { class: 'game-topbar glass' }, [
     el('div', { class: 'gt-left' }, [
-      el('span', { class: 'gt-phase' }, [PHASE_ART[phase] ? roleArt(PHASE_ART[phase], { className: 'phase-role-art' }) : icon(isNightPhase(phase) ? 'moon' : 'sun'), PHASE_NAME[phase] || phase]),
-      el('span', { class: 'gt-day' }, `${s.day ? `第 ${s.day} 天` : '开局准备'} · ${s.players.filter(p => p.name && p.alive).length} 人在场${s.sheriff ? ` · 警长 ${s.sheriff}号` : ''}`),
+      el('span', { class: 'gt-phase' }, PHASE_NAME[phase] || phase),
+      el('span', { class: 'gt-day' }, `${s.day ? `第 ${s.day} 天` : '开局准备'} · ${s.players.filter(p => p.name && p.alive).length} 人存活${s.sheriff ? ` · 警长 ${s.sheriff}号` : ''}`),
     ]),
-    el('div', { class: 'gt-right' }, [
-      // 开局确认身份时身份牌就在正文里，这里不必再放按钮
-      phase === 'roleReveal' ? null : peekButton(s),
-      gtRight,
-    ]),
-    phaseTrack(s),
+    !isJudge && (phase !== 'roleReveal' || priv.roleReady) ? peekButton(s) : null,
   ]);
-
-  // ---------- 各 Tab 面板（全部保留在 DOM 中，非激活的隐藏） ----------
-  // 各 Tab 面板全部保留在 DOM 中，非激活的用 hidden 隐藏而非卸载，
-  // 这样切回来时不需要重新请求数据，滚动位置也更容易保持。
-  const panels = {
-    actions: el('div', { class: 'col' }, [
-      s.gameOver ? gameOverCard(s) : null,
-      // 身份牌只在确认身份阶段内联展示。开局后一律收起，改用顶栏的「按住查看」——
-      // 桌上一直摊着一张写着「狼人」的卡片，隔桌就能看见。
-      phase === 'roleReveal' && !isJudge ? roleCard(s) : null,
-      // 房主专属的「跳过本阶段」已移除：每个阶段都由它自己的操作人来推进，
-      // 房主的权力体现在「天亮播报 / 白天发言」这两个由他结束的阶段上。
-      ...actionsPanel(s),
-      roomControls(s),
+  const records = replayPanel(s);
+  const previousRecords = sameView ? oldView.querySelector?.('.replay-panel') : null;
+  if (previousRecords) records.open = previousRecords.open || (s.voteHistory?.length || 0) > (previousRecords._rounds || 0);
+  records._rounds = s.voteHistory?.length || 0;
+  const board = el('section', { class: 'card glass col game-board', 'aria-label': '对局座位图' }, [
+    el('div', { class: 'board-heading' }, [el('h2', {}, '全场座位'), el('span', { class: 'pill' }, me.seat ? `${me.seat}号位 · 我` : '法官席')]),
+    el('div', { class: 'round-progress', role: 'status', 'aria-live': 'polite' }, [
+      el('strong', {}, progress), el('span', { class: 'pending-seats' }, wait),
     ]),
-    board: el('div', { class: 'col' }, [
-      el('div', { class: 'card glass col' }, [
-        el('div', { class: 'panel-title' }, [
-          '座位状态',
-          el('span', { class: 'pill', style: 'margin-left:8px' },
-            `${s.players.filter((p) => p.name && p.alive).length} 存活 / ${s.players.filter((p) => p.name).length} 人`),
-        ]),
-        seatGrid(s.players, { me, showRole: true }),
-      ]),
+    selection ? el('p', { class: 'board-selection-hint' }, `${selection.label}：点击亮起的座位选择目标`) : null,
+    selection?.danger ? el('button', { class: 'link-btn', type: 'button', click: () => { boardMode = ''; renderGame(root); } }, '取消特殊操作选择') : null,
+    seatGrid(s.players, { me, showRole: true, activity, selection }),
+    quickButtons.length ? el('div', { class: 'board-action-controls col' }, quickButtons) : null,
+    el('div', { class: 'board-tools' }, [
+      el('button', { class: 'btn-ghost', type: 'button', 'aria-label': '投票记录', click: () => {
+        const target = root.querySelector?.('.replay-panel');
+        if (target) { target.open = true; target.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }
+      } }, `投票记录 · ${s.voteHistory?.length || 0}轮`),
+      voiceSupported() && isNarrator(s) ? voiceToggle(s) : null,
     ]),
-    news: el('div', { class: 'col' }, [
-      el('div', { class: 'card glass col' }, [
-        el('div', { class: 'panel-title' }, [
-          '战况播报',
-          // 语音开关只在解说员设备（房主 / 法官）上出现——别的设备根本不朗读，给了也是误导
-          (voiceSupported() && isNarrator(s)) ? voiceToggle(s) : null,
-        ]),
-        newsPanel(s),
-        // 解说员设备若不支持语音合成（常见于微信等 App 内置浏览器），
-        // 明确提示换系统浏览器——否则用户只会觉得「手机上没声音」。
-        (isNarrator(s) && !voiceSupported())
-          ? el('div', { class: 'hint bad-text' }, '当前浏览器不支持语音播报，请用 Safari / Chrome 等系统浏览器打开')
-          : null,
-      ]),
-    ]),
-  };
-  panels.news.appendChild(replayPanel(s));
-  if (isJudge) panels.judge = judgePanel(s, emit);
-
-  let panelWrap = el('div', { class: 'tab-panels' }, tabs.map((t) => {
-    const node = panels[t.id];
-    node.classList.add('tab-panel');
-    node.dataset.panel = t.id;
-    if (t.id !== activeTab) node.hidden = true;
-    return node;
-  }));
-
-  // Keep unchanged panels mounted, preserving selections, focus and scroll position.
-  const oldView = root.children[0];
-  const oldWrap = oldView?.classList.contains('game-view') && [...oldView.children].find(n => n.classList.contains('tab-panels'));
-  const panelKeys = {
-    actions: JSON.stringify([phase, s.phaseState, s.me, s.private, s.gameOver, s.roleConfirm, s.players.map(({ connected, ...p }) => p), s.offlinePlayers, s.host, s.hostCandidates, s.canClaimHost]),
-    board: JSON.stringify(s.players), news: JSON.stringify([s.news, s.voteHistory, s.replay, s.me.isHost]), judge: JSON.stringify(s.judge),
-  };
-  if (oldWrap) {
-    for (const node of [...panelWrap.children]) {
-      const oldPanel = [...oldWrap.children].find(p => p.dataset.panel === node.dataset.panel);
-      node._renderKey = panelKeys[node.dataset.panel];
-      if (oldPanel && oldPanel._renderKey === node._renderKey) oldPanel.hidden = node.hidden;
-      else if (oldPanel) oldPanel.replaceWith(node);
-      else oldWrap.appendChild(node);
+    s.news?.length ? el('p', { class: 'board-latest' }, `最新：${s.news.at(-1).text}`) : null,
+  ]);
+  const news = el('details', { class: 'card glass public-news' }, [
+    el('summary', {}, '播报与阶段记录'), newsPanel(s),
+    isNarrator(s) && !voiceSupported() ? el('p', { class: 'hint' }, '当前浏览器不支持语音，请用 Safari / Chrome 打开') : null,
+  ]);
+  const previousNews = sameView ? oldView.querySelector?.('.public-news') : null;
+  if (previousNews) news.open = previousNews.open;
+  const sections = [
+    ['board', board, JSON.stringify([s.players, activity, priv, phase, selection?.label, selection?.selected, selection?.targets, me.seat])],
+    ['records', records, JSON.stringify([s.voteHistory, s.replay, s.gameOver])],
+    ['actions', el('section', { class: 'col game-actions', 'aria-label': '本阶段操作' }, informationNodes), JSON.stringify([phase, s.phaseId, me, priv, s.roleConfirm, s.gameOver, s.phaseState])],
+    ['news', news, JSON.stringify(s.news)],
+    ['judge', judgeNode, JSON.stringify(s.judge)],
+    ['controls', roomControls(s), JSON.stringify([s.host, s.offlinePlayers, s.hostCandidates, s.canClaimHost])],
+  ];
+  const oldMain = sameView ? oldView.querySelector?.('.game-main') : null;
+  let main;
+  if (oldMain) {
+    for (const [id, node, key] of sections) {
+      const previous = [...oldMain.children].find(item => item.dataset.section === id);
+      node.dataset.section = id; node._renderKey = key;
+      if (previous && previous._renderKey !== key) previous.replaceWith(node);
+      else if (!previous) oldMain.appendChild(node);
     }
-    for (const node of [...oldWrap.children]) if (!tabs.some(t => t.id === node.dataset.panel)) node.remove();
-    panelWrap = oldWrap;
-  } else for (const node of panelWrap.children) node._renderKey = panelKeys[node.dataset.panel];
-
-  // ---------- 底部 Tab 栏 ----------
-  const tabbar = el('nav', { class: 'tabbar glass', 'aria-label': '对局导航' }, tabs.map((t) => el('button', {
-    class: 'tabbar-item' + (t.id === activeTab ? ' active' : ''),
-    type: 'button',
-    click: () => {
-      activeTab = t.id;
-      if (t.id === 'news') { lastReadNewsId = latestNewsId; tabbar.querySelector?.('[data-tab="news"] .tb-badge')?.remove(); }
-      for (const p of panelWrap.children) {
-        p.hidden = p.dataset.panel !== t.id;
-        if (!p.hidden) { p.classList.remove('panel-enter'); void p.offsetWidth; p.classList.add('panel-enter'); }
-      }
-      for (const b of tabbar.children) { b.classList.toggle('active', b.dataset.tab === t.id); b.setAttribute('aria-pressed', String(b.dataset.tab === t.id)); }
-    },
-    'data-tab': t.id, 'aria-pressed': String(t.id === activeTab),
-  }, [
-    icon(t.id, 'tb-icon'),
-    el('span', { class: 'tb-label' }, t.label),
-    t.badge ? el('span', { class: 'tb-badge' }) : null,
-  ])));
-
-  if (oldWrap) {
-    const oldTop = [...oldView.children].find(n => n.classList.contains('game-topbar'));
-    const oldNav = [...oldView.children].find(n => n.classList.contains('tabbar'));
-    oldTop.replaceWith(topbar); oldNav.replaceWith(tabbar);
-  } else root.appendChild(el('div', { class: 'view game-view view-enter' }, [topbar, panelWrap, tabbar]));
-
-  // 念出新播报。只有解说员设备会真的出声，其余设备只静默推进游标
-  // （否则它们之后万一成了解说员，会把攒下的播报一股脑念出来）。
+    main = oldMain;
+    oldView.querySelector?.('.game-topbar')?.replaceWith(topbar);
+  } else {
+    main = el('main', { class: 'game-main' }, sections.map(([id, node, key]) => { node.dataset.section = id; node._renderKey = key; return node; }));
+    root.innerHTML = '';
+    root.appendChild(el('div', { class: 'view game-view unified-game view-enter' }, [topbar, main]));
+  }
   speakNew(s, s.news);
 }
 

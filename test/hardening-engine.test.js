@@ -112,3 +112,102 @@ test('夜间行动仅在结算复盘揭示；完成投票才公开票型', () =>
   for (let i = 2; i <= 9; i++) next.exileVote('p' + i, i === 4 ? 5 : 4);
   assert.equal(next.snapshot('p2').voteHistory.length, 1); assert.equal(next.voteHistory[0].ballots.length, 9);
 });
+
+test('放逐 PK 排除所有 PK 玩家，服务端与私有资格保持一致', () => {
+  const room = setup(); room.phase = 'votePk';
+  room.voteState = { votes: new Map(), pkCandidates: [4, 5] };
+  for (const seat of [4, 5]) {
+    assert.match(room.exileVote('p' + seat, 0).error, /PK 玩家/);
+    assert.equal(room.snapshot('p' + seat).private.canVote, false);
+  }
+  assert.deepEqual(room._voteEligible().map(p => p.seat), [1, 2, 3, 6, 7, 8, 9]);
+  const activity = room.snapshot('p1').activity;
+  assert.equal(activity.total, 7);
+  assert.equal(activity.seats.find(p => p.seat === 4).state, 'excluded');
+  room.exileVote('p1', 4);
+  assert.equal(room.snapshot('p2').activity.seats.find(p => p.seat === 1).label, '已投票');
+  assert.equal(JSON.stringify(room.snapshot('p2').activity).includes('target'), false);
+});
+
+test('退水保留上警历史，不获得普通警长票或 PK 票，存档恢复仍有效', () => {
+  const room = setup(); room.phase = 'sheriffDeclare'; room._initSheriffState();
+  room.setDeclaration('p1', true); room.setDeclaration('p1', false);
+  room.setDeclaration('p2', true); room.setDeclaration('p3', true);
+  for (let i = 4; i <= 9; i++) room.setDeclaration('p' + i, false);
+  assert.equal(room.phaseState.speakerSeat, 2);
+  room.endPhase('p2'); room.endPhase('p3');
+  assert.equal(room.phase, 'sheriffVote');
+  assert.equal(room.snapshot('p1').private.sheriffCanVote, false);
+  assert.equal(room.snapshot('p4').private.sheriffCanVote, true);
+  assert.match(room.sheriffVote('p1', 2).error, /退水/);
+  const restored = restoreRoom(serializeRoom(room), () => {});
+  assert.equal(restored.snapshot('p1').private.sheriffCanVote, false);
+  restored.phase = 'sheriffPk'; restored.sheriffState.pkCandidates = [2, 3];
+  assert.match(restored.sheriffVote('p1', 0).error, /退水/);
+});
+
+test('当前发言者退水直接轮到下一人，不等待其再次结束发言', () => {
+  const room = setup(); room.phase = 'sheriffSpeech';
+  room.sheriffState = { onPodium: new Set([1, 2, 3]), withdrawn: new Set(), votes: new Map(), pkCandidates: [] };
+  room.phaseState = { candidates: [1, 2, 3], speechOrder: [1, 2, 3], speakerSeat: 1 };
+  room.setDeclaration('p1', false);
+  assert.equal(room.phaseState.speakerSeat, 2);
+  assert.match(room.endPhase('p1').error, /发言者/);
+  assert.equal(room.snapshot('p4').activity.seats.find(p => p.seat === 2).state, 'speaking');
+});
+
+test('全部存活者进入放逐 PK 时，无可投者直接平安日，不能卡死', () => {
+  const room = setup(); room.phase = 'dayVote';
+  room.voteState = { votes: new Map(), pkCandidates: [] };
+  for (let seat = 1; seat <= 9; seat++) room.exileVote('p' + seat, seat === 9 ? 1 : seat + 1);
+  assert.ok(room.phase.startsWith('night'));
+  assert.equal(room.voteHistory.at(-1).kind, '放逐 PK');
+  assert.deepEqual(room.voteHistory.at(-1).ballots, []);
+});
+
+test('夜间行动进度不向无关玩家公开操作者；狼人只看到自己队伍', () => {
+  const room = setup(); room.phase = 'nightWolves';
+  room.night = { wolfVotes: { 1: 4 } };
+  assert.deepEqual(room.snapshot('p4').activity.seats, []);
+  assert.deepEqual(room.snapshot('p1').activity.seats.map(p => p.seat), [1, 2, 3]);
+  room.phase = 'nightSeer';
+  assert.deepEqual(room.snapshot('p4').activity.seats, []);
+  assert.deepEqual(room.snapshot('p6').activity.pending, [6]);
+  room.phase = 'hunterShoot'; room.phaseState = { seat: 8 };
+  assert.deepEqual(room.snapshot('p4').activity.seats, []);
+  assert.deepEqual(room.snapshot('p8').activity.pending, [8]);
+});
+
+test('法官模式守卫不能同夜重复操作，目标状态仅本人可见', () => {
+  const room = setup(true); room.players.get('p6').role = 'guard'; room.phase = 'nightGuard';
+  room.night = { guardTarget: null };
+  assert.equal(room.submitNightAction('p6', { type: 'guardProtect', target: 4 }).ok, true);
+  assert.match(room.submitNightAction('p6', { type: 'guardProtect', target: 5 }).error, /已完成守护/);
+  assert.equal(room.snapshot('p6').private.guardTarget, 4);
+  assert.equal(room.snapshot('p4').private.guardTarget, null);
+});
+
+test('白天发言可由房主标记，其他人不能抢麦，结束后全场看到已发言', () => {
+  const room = setup(); room.phase = 'dayTalk'; room.phaseState = {};
+  assert.match(room.setSpeaker('p2', 4).error, /房主/);
+  assert.equal(room.setSpeaker('p1', 4).ok, true);
+  assert.equal(room.snapshot('p5').activity.seats.find(p => p.seat === 4).state, 'speaking');
+  assert.match(room.finishSpeech('p5').error, /未轮到你/);
+  assert.equal(room.snapshot('p4').private.canEndSpeech, true);
+  assert.equal(room.finishSpeech('p4').ok, true);
+  assert.equal(room.snapshot('p5').activity.seats.find(p => p.seat === 4).label, '已发言');
+  room.setSpeaker('p1', 5);
+  assert.equal(room.phaseState.speakerSeat, 5);
+  assert.equal(room.phase, 'dayTalk');
+  room.endPhase('p1'); assert.equal(room.phase, 'dayVote');
+});
+
+test('PK 目标死亡后不能继续投给它，法官不能冒充玩家确认身份', () => {
+  const room = setup(true);
+  assert.match(room.roleConfirm('judge').error, /无效玩家/);
+  room.phase = 'votePk'; room.voteState = { votes: new Map(), pkCandidates: [4, 5] };
+  room.players.get('p4').alive = false;
+  assert.match(room.exileVote('p1', 4).error, /目标无效/);
+  room.phase = 'sheriffPk'; room.sheriffState = { onPodium: new Set([4, 5]), withdrawn: new Set(), votes: new Map(), pkCandidates: [4, 5] };
+  assert.match(room.sheriffVote('p1', 4).error, /目标无效/);
+});

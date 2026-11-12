@@ -1,6 +1,6 @@
 // 座位网格：大厅（可点击入座）与游戏内（存活/出局/翻牌）共用。
 import { roleArt } from './roleArt.js';
-import { el } from '../ui.js';
+import { el, setPending } from '../ui.js';
 
 /**
  * @param {Array} players  snapshot 的 players（座位号 1..N）
@@ -12,6 +12,8 @@ import { el } from '../ui.js';
 export function seatGrid(players, opts = {}) {
   const grid = el('div', { class: 'seat-grid' + (players.length > 9 ? ' dense' : '') });
   const me = opts.me;
+  const activity = new Map((opts.activity?.seats || []).map(item => [item.seat, item]));
+  const eligible = new Set(opts.selection?.targets.map(item => item.seat) || []);
 
   for (const seat of players) {
     const isMine = me && seat.seat === me.seat;
@@ -29,13 +31,24 @@ export function seatGrid(players, opts = {}) {
       ]);
       if (canSit) {
         card.classList.add('tappable');
-        card.addEventListener('click', () => opts.onSit(seat.seat));
+        card.addEventListener('click', async () => {
+          if (card.disabled) return;
+          setPending(card, true);
+          const label = card.querySelector?.('.seat-cta');
+          if (label) label.textContent = '正在入座…';
+          try { await opts.onSit(seat.seat); }
+          finally { setPending(card, false); if (label) label.textContent = sitting ? '换到这里' : '点击入座'; }
+        });
       }
       grid.appendChild(card);
       continue;
     }
 
     const cls = ['seat', 'taken'];
+    const status = activity.get(seat.seat);
+    const canChoose = !!opts.selection && eligible.has(seat.seat);
+    if (canChoose) cls.push('selectable');
+    if (status) cls.push('activity-' + status.state);
     if (isMine) cls.push('mine');
     if (!seat.alive) cls.push('dead');
 
@@ -57,10 +70,22 @@ export function seatGrid(players, opts = {}) {
       const camp = seat.role === 'wolf' || seat.role === 'whiteWolfKing' ? 'wolf' : 'good';
       bits.push(el('span', { class: 'role-tag ' + camp }, seat.roleName));
     }
+    if (status) bits.push(el('span', { class: 'seat-activity', 'data-state': status.state }, status.label));
+    if (canChoose) bits.push(el('span', { class: 'seat-pick-hint', 'aria-hidden': 'true' }, '点击选择'));
     if (seat.idiotFlipped) bits.push(el('span', { class: 'idiot-tag' }, '翻牌免投'));
 
-    grid.appendChild(el('div', { class: cls.join(' ') }, bits));
+    grid.appendChild(el(canChoose ? 'button' : 'div', { class: cls.join(' '), 'data-seat': seat.seat, ...(canChoose ? { type: 'button', 'aria-label': `${seat.seat}号 ${seat.name}，选择目标`, 'aria-pressed': 'false', click: event => opts.selection.choose(seat.seat, event.currentTarget) } : {}) }, bits));
   }
 
+  if (opts.selection) opts.selection.subscribe(({ selected, submitting }) => {
+    for (const card of grid.children) {
+      const chosen = Number(card.dataset.seat) === selected;
+      card.classList.toggle('selected', chosen);
+      if (eligible.has(Number(card.dataset.seat))) {
+        card.disabled = submitting; card.setAttribute('aria-pressed', String(chosen));
+        card.setAttribute('aria-busy', String(submitting && chosen));
+      }
+    }
+  });
   return grid;
 }

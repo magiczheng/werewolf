@@ -355,8 +355,10 @@ test('放逐平票进入 PK，PK 仍平则平安日', () => {
   voteTie();
   assert.equal(room.phase, 'votePk');
 
-  // PK 重投仍 3:3 → 平安日，进入夜晚
-  voteTie();
+  // PK 的 1、2 号不参与重投，其他七人 3:3 + 1 弃票。
+  const voters = room._voteEligible();
+  assert.ok(voters.every(p => ![1, 2].includes(p.seat)));
+  voters.forEach((p, i) => room.exileVote(p.playerId, i < 3 ? 1 : i < 6 ? 2 : 0));
   assert.equal(room._playerAt(1).alive, true);
   assert.equal(room._playerAt(2).alive, true);
   assert.ok(isNight(room.phase), 'PK 后进入夜晚');

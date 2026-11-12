@@ -49,10 +49,24 @@ function memoryStore() {
 }
 
 /** 会话与房间记录统一走这里：多账号测试模式下自动落到每个 tab 独立的空间。 */
+const storageFallback = new Map();
+const storageOverrides = new Set();
 export const store = {
-  get: (k) => backend.getItem(k),
-  set: (k, v) => backend.setItem(k, v),
-  remove: (k) => backend.removeItem(k),
+  get(k) {
+    if (storageOverrides.has(k)) return storageFallback.get(k) ?? null;
+    try { const value = backend.getItem(k); storageFallback.set(k, value); return value; }
+    catch (_) { return storageFallback.get(k) ?? null; }
+  },
+  set(k, v) {
+    storageFallback.set(k, String(v));
+    try { backend.setItem(k, v); storageOverrides.delete(k); }
+    catch (_) { storageOverrides.add(k); }
+  },
+  remove(k) {
+    storageFallback.set(k, null);
+    try { backend.removeItem(k); storageOverrides.delete(k); }
+    catch (_) { storageOverrides.add(k); }
+  },
 };
 
 /** 是否处于多账号测试模式（供界面提示用）。 */
