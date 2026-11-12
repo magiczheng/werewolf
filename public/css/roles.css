@@ -1,0 +1,66 @@
+/* ---------- 月夜角色原画 ---------- */
+.role-art { display: block; object-fit: cover; object-position: 50% 35%; background: #15231a; border: 1px solid #c9ad733d; }
+.role-catalog-link { margin-left: auto; padding-left: 12px; color: var(--accent); font-size: 11px; font-weight: 400; text-decoration: none; letter-spacing: .02em; }
+.role-catalog-link:hover { color: #ecdbb6; }
+.stepper.role-option { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 12px 8px; padding: 0 0 13px; overflow: hidden; border-color: #b2c3a929; }
+.role-option-art { grid-column: 1 / -1; width: 100%; height: auto; aspect-ratio: 1.35; object-position: 50% 34%; border: 0; border-bottom: 1px solid #c9ad7330; }
+.role-option .stepper-label { padding-left: 13px; gap: 4px; }
+.role-option .stepper-ctrl { padding-right: 10px; }
+.role-option .stepper-name { color: #e6dec8; letter-spacing: .04em; }
+.role-option .stepper-label small { font-size: 10px; }
+.role-option.active { background: #243126; }
+.role-option.wolf.active { background: #293026; border-color: #c9ad734a; }
+.role-option:not(.active) .role-option-art { filter: saturate(.6) brightness(.78); }
+.identity-art { width: 100%; height: auto; max-height: 255px; aspect-ratio: 1.2; border-radius: 8px; margin: 7px 0 12px; filter: saturate(.55) brightness(.72); }
+.role-card { max-width: 440px; width: 100%; margin-inline: auto; }
+.peek-panel { max-height: calc(100dvh - 110px - var(--safe-top) - var(--safe-bottom)); overflow-y: auto; overscroll-behavior: contain; }
+.peek-panel .identity-art { max-height: 190px; margin: 0 0 8px; aspect-ratio: 1.4; }
+.peek-panel .rc-name { font-size: 29px; margin: 2px 0; }
+.peek-panel .rc-desc { font-size: 12px; }
+.wait-role-art { width: 180px; height: 200px; border-radius: 90px 90px 12px 12px; margin: 0 auto 26px; object-position: 50% 30%; box-shadow: 0 0 0 5px #c9ad7307, 0 16px 32px #00000020; }
+.phase-role-art { width: 34px; height: 38px; border-radius: 6px; }
+.victory-role-art { width: 180px; height: 180px; margin: 0 auto 24px; border-radius: 50%; box-shadow: 0 0 0 7px #c9ad730b; }
+.seat .seat-role-art { width: 52px; height: 58px; border-radius: 8px; }
+.cfg-chip.cfg-role { display: flex; align-items: center; gap: 10px; padding: 5px 13px 5px 5px; border-color: #c9ad7330; background: #15231a; color: #d6cfb8; }
+.cfg-role-art { width: 36px; height: 42px; border-radius: 4px; border: 0; }
+.judge-role { display: flex; align-items: center; gap: 7px; }
+.judge-role-art { width: 30px; height: 36px; border-radius: 4px; }
+.judge-role .role-tag { white-space: nowrap; }
+
+/* 图鉴与真实对局复用同一套原画与角色资料。 */
+.rolebook-view { max-width: 1100px; margin: auto; gap: 28px; }
+.rolebook-head { display: flex; justify-content: space-between; align-items: center; gap: 12px; padding-bottom: 22px; border-bottom: 1px solid var(--glass-brd); }
+.role-gallery { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 22px; }
+.role-gallery-card { display: flex; flex-direction: column; border: 1px solid #c9ad7330; border-radius: 12px; overflow: hidden; background: #192820; color: var(--ink); text-decoration: none; transition: transform .2s, border-color .2s; }
+.role-gallery-card:hover { transform: translateY(-4px); border-color: #c9ad7380; }
+.role-gallery-art { width: 100%; height: auto; aspect-ratio: .92; border: 0; border-bottom: 1px solid #c9ad732e; }
+.role-gallery-caption { padding: 19px; display: flex; flex-direction: column; gap: 6px; }
+.role-gallery-caption h3 { font-family: 'Songti SC', 'STSong', serif; font-size: 23px; font-weight: 500; letter-spacing: .1em; }
+.role-gallery-caption p { color: var(--ink-3); font-size: 11px; }
+.role-gallery-number { font-size: 9px; letter-spacing: .17em; color: var(--accent); margin-bottom: 2px; }
+@media (max-width: 1000px) and (min-width: 721px) { .role-option-art { aspect-ratio: 1.8; } .role-gallery { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (max-width: 720px) {
+ .stepper.role-option { gap: 10px 4px; padding-bottom: 12px; }
+ .role-option-art { aspect-ratio: .95; }
+ .role-option .stepper-label { padding-left: 10px; }
+ .role-option .stepper-ctrl { padding-right: 7px; }
+ .role-option .stepper-name { font-size: 13px; }
+ .role-option .stepper-label small { font-size: 9px; line-height: 1.5; }
+ .role-option .step-btn { width: 24px; }
+ .role-option .stepper-val { min-width: 18px; }
+ .role-option .stepper-label { grid-column: 1 / -1; }
+ .role-option .stepper-ctrl { grid-column: 1 / -1; padding: 0 10px; justify-content: space-between; }
+ .role-option .step-btn { width: 36px; height: 32px; }
+ .role-option .stepper-val { font-size: 16px; }
+ .wait-role-art { width: 150px; height: 170px; }
+ .judge-table th, .judge-table td { padding: 9px 3px; font-size: 11px; }
+ .judge-role { gap: 4px; }
+ .judge-role-art { width: 24px; height: 30px; }
+ .judge-role .role-tag { font-size: 9px; padding: 2px 4px; }
+ .role-gallery { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+ .role-gallery-caption { padding: 15px 12px; }
+ .role-gallery-caption h3 { font-size: 21px; }
+ .role-gallery-number { font-size: 8px; }
+ .rolebook-head .brand-sub { display: none; }
+}
+@media (prefers-reduced-motion: reduce) { .role-gallery-card:hover { transform: none; } }

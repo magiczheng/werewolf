@@ -10,6 +10,8 @@ export function openDb(file) {
   }
   const db = new Database(file);
   db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  db.pragma('busy_timeout = 5000');
   db.exec(`
     CREATE TABLE IF NOT EXISTS users (
       id         INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -26,6 +28,8 @@ export function openDb(file) {
       created_at INTEGER NOT NULL,
       last_seen  INTEGER NOT NULL
     );
+    CREATE INDEX IF NOT EXISTS sessions_last_seen ON sessions(last_seen);
+    CREATE INDEX IF NOT EXISTS sessions_user_id ON sessions(user_id);
   `);
   return db;
 }

@@ -9,10 +9,12 @@
     "dev": "node --watch server/index.js",
     "dev:multi": "MULTI_ACCOUNT=1 node --watch server/index.js",
     "test": "node --test test/*.test.js",
-    "icons": "./tools/make-icons.sh"
+    "icons": "./tools/make-icons.sh",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui"
   },
   "engines": {
-    "node": ">=18"
+    "node": ">=22"
   },
   "dependencies": {
     "better-sqlite3": "^13.0.3",
@@ -22,6 +24,10 @@
   },
   "license": "MIT",
   "devDependencies": {
+    "@playwright/test": "^1.65.0",
     "socket.io-client": "^4.8.3"
+  },
+  "overrides": {
+    "qs": "^6.17.1"
   }
 }

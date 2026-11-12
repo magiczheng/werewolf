@@ -9,24 +9,7 @@
 //   · 投票 / 上警 / 确认身份 → 相关玩家全部操作完自动推进
 // 这样线下聚会时节奏完全由桌上的人掌握，不会因为读得慢被计时器推着走。
 
-export const DEFAULT_RULES = {
-  firstNightWitchSelfHeal: true, // 女巫首夜可自救
-  guardWitchConflict: false,     // false=守救同盾平安夜；true=守救相克（目标死亡）
-  // 首日顺序（面杀主流）：先竞选警长，竞选结束后再公布昨夜死讯。
-  // 关闭后改为「先公布死讯，再竞选警长」（部分网杀流程）。
-  // 开启时，昨夜死者仍可参加首日警长竞选——线下他们此时还不知道自己已死。
-  sheriffBeforeDeath: true,
-  sheriffVoteWeight: 1.5,        // 警长票权重（实现上乘2缩放：普通=2、警长=3）
-  // 屠边规则（默认开，主流玩法）：
-  //   true  —— 狼人杀光所有「神职」或杀光所有「平民」即获胜（屠边）
-  //   false —— 狼人数量追平/反超好人即获胜（屠城）
-  // 屠边更常见也更平衡：狼人需要针对性地清掉某一类好人，而不是单纯堆人数。
-  killSide: true,
-  // 被放逐的玩家是否公开翻牌。
-  // 默认关闭：放逐只公布「谁出局」，「是什么身份」不让全场知道——
-  // 否则一次放逐等于白送全场一条身份信息。想让放逐也翻牌的桌可以在创建时打开。
-  revealOnExile: false,
-};
+export { RULE_DEFAULTS as DEFAULT_RULES } from '../public/js/gameRules.js';
 
 export const DEFAULT_ROLES = {
   wolf: 0,
@@ -46,7 +29,7 @@ export const PUBLIC_URL = process.env.PUBLIC_URL || ''; // 可选：固定分享
 // 账号体系
 export const DB_PATH = process.env.DB_PATH || new URL('../data/werewolf.db', import.meta.url).pathname; // SQLite 数据文件
 export const MIN_PASSWORD_LENGTH = 6;       // 密码最短长度
-export const AUTH_RATE_LIMIT = 20;          // 每 IP 每分钟注册/登录尝试上限
+export const AUTH_RATE_LIMIT = Math.max(1, parseInt(process.env.AUTH_RATE_LIMIT || '20', 10) || 20);          // 每 IP 每分钟注册/登录尝试上限
 export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 会话 30 天未活跃则清理
 
 // 房间清理：空闲房间（无连接）5 小时后回收
@@ -97,9 +80,13 @@ export const NIGHT_MASK_MAX_MS = 10000;
 //
 //   SKIP_ROLE_REVEAL=1  强制跳过
 //   SKIP_ROLE_REVEAL=0  强制保留（想在测试环境里验证这个阶段时用）
-export const SKIP_ROLE_REVEAL = process.env.SKIP_ROLE_REVEAL === '0' ? false : MULTI_ACCOUNT;
+export const SKIP_ROLE_REVEAL = process.env.SKIP_ROLE_REVEAL === '1' ? true : process.env.SKIP_ROLE_REVEAL === '0' ? false : MULTI_ACCOUNT;
 
 export const TEST_ACCOUNT_COUNT = 9;
 export const TEST_ACCOUNT_PASSWORD = '111111';
 // 测试账号邮箱规则：1@qq.com … 9@qq.com（数量见 TEST_ACCOUNT_COUNT）
 export const testAccountEmail = (i) => `${i}@qq.com`;
+
+// Comma-separated exact IPs of reverse proxies allowed to supply X-Forwarded-For.
+export const TRUSTED_PROXIES = (process.env.TRUSTED_PROXIES || '').split(',').map(s => s.trim()).filter(Boolean);
+export const MAX_ROOMS = Math.max(1, parseInt(process.env.MAX_ROOMS || '500', 10) || 500);

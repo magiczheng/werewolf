@@ -1,0 +1,22 @@
+/* Room preferences, connection recovery and public vote history. */
+.preset-row { display: flex; gap: 7px; flex-wrap: wrap; }
+.preset-btn { min-height: 36px; padding: 7px 12px; font-size: 11px; background: #112018; }
+.preset-btn.active { color: var(--gold); border-color: #c9ad7380; background: #2b3727; }
+.room-controls, .quick-guide { grid-column: 1 / -1; }
+.room-controls .row .input { min-width: 0; flex: 1; }
+.room-controls .row button { flex-shrink: 0; }
+.room-controls > .hint { overflow-wrap: anywhere; }
+.quick-guide { border-color: #c9ad733a; background: #253023; }
+.quick-guide button { align-self: flex-start; }
+.vote-record { display: flex; flex-direction: column; gap: 11px; padding: 15px 0; border-top: 1px solid var(--glass-brd); }
+.vote-record h3 { font-weight: 500; color: var(--accent-2); }
+.replay-timeline { border-top: 1px solid var(--glass-brd); padding-top: 22px; }
+.replay-timeline .news-item { font-size: 12px; }
+.target-chip { font: inherit; color: var(--ink); min-width: 0; }
+.target-chip:disabled { opacity: .65; }
+.update-notice { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabbar-total) + 25px); z-index: 55; width: min(90vw, 430px); padding: 14px 16px; background: #223326; border: 1px solid #c9ad7360; border-radius: 12px; display: flex; align-items: center; gap: 15px; box-shadow: var(--shadow-lg); font-size: 12px; }
+.update-notice span { flex: 1; }
+.update-notice button { min-height: 32px; padding: 6px 12px; font-size: 11px; }
+body.offline .game-topbar::after { content: '连接已断开，恢复后再操作'; position: absolute; top: 100%; left: 0; right: 0; background: #4b3527; color: #ecd3a5; padding: 5px 12px; text-align: center; font-size: 11px; }
+@media (max-width: 720px) { .room-controls, .quick-guide { width: 100%; } .lobby-view > .room-controls { order: 4; } }
+body.offline .target-chip { opacity: .55; }

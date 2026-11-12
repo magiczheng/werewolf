@@ -1,8 +1,10 @@
 // 游戏页：顶部阶段条 + 底部 Tab（操作 / 板子 / 播报 / 法官）
-import { el, toast, confirmDialog } from '../ui.js';
+import { el, toast, confirmDialog, dismissDialog } from '../ui.js';
 import { net, store } from '../net.js';
 import { PHASE_NAME, isNightPhase } from '../constants.js';
 import { roleArt, PHASE_ART } from '../components/roleArt.js';
+import { roomControls } from '../components/roomControls.js';
+import { replayPanel } from '../components/replay.js';
 import { icon } from '../components/icon.js';
 import { seatGrid } from '../components/seats.js';
 import { targetPicker } from '../components/targetPicker.js';
@@ -20,11 +22,30 @@ import {
 // net.on 会在每次服务端推送时重跑 renderGame()，这些状态若放在函数内会被重置。
 let activeTab = 'actions';
 let lastPhase = '';
+let lastStage = '';
+let lastReadNewsId = 0;
 
-const emit = (event, payload) => net.emit(event, payload).catch((e) => toast(e.message, true));
+const emit = (event, payload) => net.emit(event, payload).catch(e => { toast(e.message, true); return { error: e.message }; });
 
 // 注：本应用没有阶段倒计时，因此没有计时器心跳。
 // 阶段何时结束由「当前操作人点结束」决定（见 endPhase / canEndPhase）。
+
+// Public stage landmarks; they contain no private identities or hidden timers.
+function phaseTrack(s) {
+  let steps;
+  let current;
+  if (isNightPhase(s.phase)) {
+    steps = [['nightGuard', '守卫', 'guard'], ['nightWolves', '狼人', 'wolf'], ['nightWitch', '女巫', 'witch'], ['nightSeer', '预言家', 'seer']]
+      .filter(([id, , role]) => id === s.phase || (s.settings.roles[role] || 0) + (role === 'wolf' ? s.settings.roles.whiteWolfKing || 0 : 0) > 0);
+    current = steps.findIndex(([id]) => id === s.phase);
+  } else if (s.phase === 'roleReveal') { steps = [['roleReveal', '确认身份'], ['night', '进入夜晚']]; current = 0; }
+  else if (s.gameOver) { steps = [['end', '本局结束'], ['replay', '查看复盘']]; current = 0; }
+  else {
+    steps = [['dawn', '天亮'], ['sheriff', '警长'], ['talk', '发言'], ['vote', '投票']];
+    current = s.phase === 'dayStart' ? 0 : s.phase.startsWith('sheriff') ? 1 : s.phase === 'dayTalk' ? 2 : 3;
+  }
+  return el('ol', { class: 'phase-track', 'aria-label': '本轮流程' }, steps.map(([id, label], i) => el('li', { class: 'phase-step' + (i === current ? ' current' : i < current ? ' complete' : ''), ...(i === current ? { 'aria-current': 'step' } : {}) }, [el('span', { class: 'phase-step-dot', 'aria-hidden': 'true' }), el('span', {}, label)])));
+}
 
 // ---------- 当前玩家是否有可执行动作 ----------
 // 用于「阶段切换时自动跳回操作页」：夜里狼人若正停在播报页，会错过刀人。
@@ -60,6 +81,8 @@ function hasAction(s) {
 export function resetGameView() {
   activeTab = 'actions';
   lastPhase = '';
+  lastStage = '';
+  lastReadNewsId = 0;
   // 浮层挂在 body 上，不随 #app 重建而消失，离开游戏页时必须主动收起
   hidePeek();
 }
@@ -71,7 +94,9 @@ function waitScreen(text, s) {
     PHASE_ART[s.phase]
       ? roleArt(PHASE_ART[s.phase], { className: 'wait-role-art', full: true })
       : el('div', { class: 'wait-icon' }, icon(isNightPhase(s.phase) ? 'moon' : 'sun')),
+    el('div', { class: 'wait-status' }, [el('span', { class: 'status-pulse', 'aria-hidden': 'true' }), el('span', {}, '牌局进行中')]),
     el('div', { class: 'wait-text' }, text),
+    el('p', { class: 'wait-caption' }, s.me.alive ? '轮到你时，操作会自动出现在这里' : '你仍可在板子和播报中查看局势'),
   ]);
 }
 
@@ -234,7 +259,12 @@ function actionsPanel(s) {
         body.appendChild(el('div', { class: 'hint ' + (w.killTarget ? 'bad-text' : '') },
           w.killTarget ? `今夜 ${w.killTarget}号 被狼人杀害` : '今夜无人被刀'));
 
-        if (w.healLeft && w.killTarget) {
+        if (w.actedTonight) {
+          body.appendChild(el('div', { class: 'hint' }, '本夜已使用一种药水，请等待法官推进。'));
+          section('女巫行动', body);
+          break;
+        }
+        if (w.healLeft && w.killTarget && (w.killTarget !== me.seat || w.canSelfHeal)) {
           body.appendChild(el('button', {
             class: 'btn-primary', type: 'button',
             click: () => emit('nightAction', { type: 'witchAct', kind: 'heal', target: w.killTarget }),
@@ -388,7 +418,7 @@ function actionsPanel(s) {
         } else {
           section(isPk ? '放逐PK · 重新投票' : '放逐投票', targetPicker(
             // 不能投给自己（服务端也会拒绝，这里不给出这个选项）
-            targets.filter((p) => p.seat !== me.seat),
+            targets.filter((p) => p.seat !== me.seat && !p.idiotFlipped),
             isPk
               ? `平票候选人：${pkCands.map((c) => `${c}号`).join('、')}（仍平票则平安日）`
               : '票数最高者被放逐，平票会进入 PK · 投出后不可修改',
@@ -496,9 +526,11 @@ export function renderGame(root) {
   const me = s.me;
   const phase = s.phase;
 
-  const phaseChanged = phase !== lastPhase;
+  const phaseChanged = phase !== lastPhase || (!!s.phaseId && s.phaseId !== lastStage);
   if (phaseChanged) {
     lastPhase = phase;
+    lastStage = s.phaseId || phase;
+    dismissDialog();
     window.scrollTo(0, 0);
     // 阶段变了、且当前玩家有事可做（要操作，或该由他点结束）→ 拉回操作页。
     // 否则夜里轮到他行动时，人还停在播报页，整局就卡住了。
@@ -507,15 +539,18 @@ export function renderGame(root) {
     hidePeek();
   }
 
+  const latestNewsId = s.news?.at(-1)?.id || 0;
+  if (activeTab === 'news') lastReadNewsId = latestNewsId;
   const tabs = [
     { id: 'actions', label: '操作', icon: '🎯', badge: hasAction(s) },
     { id: 'board', label: '板子', icon: '🪑' },
-    { id: 'news', label: '播报', icon: '📢', badge: !!(s.news && s.news.length) },
+    { id: 'news', label: '播报', icon: '📢', badge: latestNewsId > lastReadNewsId },
   ];
   // 必须用 me.isJudge 判断，不能用 s.judge：
   // 法官模式下非法官玩家的 s.judge 是 {name, connected}（没有 players），
   // 拿它当开关会把普通玩家送进法官面板并因 j.players 未定义而整页崩掉。
   const isJudge = !!(me.isJudge && s.judge && s.judge.players);
+  if (isJudge && phaseChanged) activeTab = 'judge';
   if (isJudge) tabs.push({ id: 'judge', label: '法官', icon: '👨‍⚖️' });
   if (!tabs.some((t) => t.id === activeTab)) activeTab = 'actions'; // 法官模式关闭时回落到操作页
 
@@ -543,13 +578,14 @@ export function renderGame(root) {
   const topbar = el('div', { class: 'game-topbar glass' }, [
     el('div', { class: 'gt-left' }, [
       el('span', { class: 'gt-phase' }, [PHASE_ART[phase] ? roleArt(PHASE_ART[phase], { className: 'phase-role-art' }) : icon(isNightPhase(phase) ? 'moon' : 'sun'), PHASE_NAME[phase] || phase]),
-      el('span', { class: 'gt-day' }, `第 ${s.day} 天${s.sheriff ? ` · 警长 ${s.sheriff}号` : ''}`),
+      el('span', { class: 'gt-day' }, `${s.day ? `第 ${s.day} 天` : '开局准备'} · ${s.players.filter(p => p.name && p.alive).length} 人在场${s.sheriff ? ` · 警长 ${s.sheriff}号` : ''}`),
     ]),
     el('div', { class: 'gt-right' }, [
       // 开局确认身份时身份牌就在正文里，这里不必再放按钮
       phase === 'roleReveal' ? null : peekButton(s),
       gtRight,
     ]),
+    phaseTrack(s),
   ]);
 
   // ---------- 各 Tab 面板（全部保留在 DOM 中，非激活的隐藏） ----------
@@ -560,10 +596,11 @@ export function renderGame(root) {
       s.gameOver ? gameOverCard(s) : null,
       // 身份牌只在确认身份阶段内联展示。开局后一律收起，改用顶栏的「按住查看」——
       // 桌上一直摊着一张写着「狼人」的卡片，隔桌就能看见。
-      phase === 'roleReveal' ? roleCard(s) : null,
+      phase === 'roleReveal' && !isJudge ? roleCard(s) : null,
       // 房主专属的「跳过本阶段」已移除：每个阶段都由它自己的操作人来推进，
       // 房主的权力体现在「天亮播报 / 白天发言」这两个由他结束的阶段上。
       ...actionsPanel(s),
+      roomControls(s),
     ]),
     board: el('div', { class: 'col' }, [
       el('div', { class: 'card glass col' }, [
@@ -591,9 +628,10 @@ export function renderGame(root) {
       ]),
     ]),
   };
+  panels.news.appendChild(replayPanel(s));
   if (isJudge) panels.judge = judgePanel(s, emit);
 
-  const panelWrap = el('div', { class: 'tab-panels' }, tabs.map((t) => {
+  let panelWrap = el('div', { class: 'tab-panels' }, tabs.map((t) => {
     const node = panels[t.id];
     node.classList.add('tab-panel');
     node.dataset.panel = t.id;
@@ -601,23 +639,50 @@ export function renderGame(root) {
     return node;
   }));
 
+  // Keep unchanged panels mounted, preserving selections, focus and scroll position.
+  const oldView = root.children[0];
+  const oldWrap = oldView?.classList.contains('game-view') && [...oldView.children].find(n => n.classList.contains('tab-panels'));
+  const panelKeys = {
+    actions: JSON.stringify([phase, s.phaseState, s.me, s.private, s.gameOver, s.roleConfirm, s.players.map(({ connected, ...p }) => p), s.offlinePlayers, s.host, s.hostCandidates, s.canClaimHost]),
+    board: JSON.stringify(s.players), news: JSON.stringify([s.news, s.voteHistory, s.replay, s.me.isHost]), judge: JSON.stringify(s.judge),
+  };
+  if (oldWrap) {
+    for (const node of [...panelWrap.children]) {
+      const oldPanel = [...oldWrap.children].find(p => p.dataset.panel === node.dataset.panel);
+      node._renderKey = panelKeys[node.dataset.panel];
+      if (oldPanel && oldPanel._renderKey === node._renderKey) oldPanel.hidden = node.hidden;
+      else if (oldPanel) oldPanel.replaceWith(node);
+      else oldWrap.appendChild(node);
+    }
+    for (const node of [...oldWrap.children]) if (!tabs.some(t => t.id === node.dataset.panel)) node.remove();
+    panelWrap = oldWrap;
+  } else for (const node of panelWrap.children) node._renderKey = panelKeys[node.dataset.panel];
+
   // ---------- 底部 Tab 栏 ----------
   const tabbar = el('nav', { class: 'tabbar glass', 'aria-label': '对局导航' }, tabs.map((t) => el('button', {
     class: 'tabbar-item' + (t.id === activeTab ? ' active' : ''),
     type: 'button',
     click: () => {
       activeTab = t.id;
-      for (const p of panelWrap.children) p.hidden = p.dataset.panel !== t.id;
-      for (const b of tabbar.children) b.classList.toggle('active', b.dataset.tab === t.id);
+      if (t.id === 'news') { lastReadNewsId = latestNewsId; tabbar.querySelector?.('[data-tab="news"] .tb-badge')?.remove(); }
+      for (const p of panelWrap.children) {
+        p.hidden = p.dataset.panel !== t.id;
+        if (!p.hidden) { p.classList.remove('panel-enter'); void p.offsetWidth; p.classList.add('panel-enter'); }
+      }
+      for (const b of tabbar.children) { b.classList.toggle('active', b.dataset.tab === t.id); b.setAttribute('aria-pressed', String(b.dataset.tab === t.id)); }
     },
-    'data-tab': t.id,
+    'data-tab': t.id, 'aria-pressed': String(t.id === activeTab),
   }, [
     icon(t.id, 'tb-icon'),
     el('span', { class: 'tb-label' }, t.label),
     t.badge ? el('span', { class: 'tb-badge' }) : null,
   ])));
 
-  root.appendChild(el('div', { class: 'view game-view' }, [topbar, panelWrap, tabbar]));
+  if (oldWrap) {
+    const oldTop = [...oldView.children].find(n => n.classList.contains('game-topbar'));
+    const oldNav = [...oldView.children].find(n => n.classList.contains('tabbar'));
+    oldTop.replaceWith(topbar); oldNav.replaceWith(tabbar);
+  } else root.appendChild(el('div', { class: 'view game-view view-enter' }, [topbar, panelWrap, tabbar]));
 
   // 念出新播报。只有解说员设备会真的出声，其余设备只静默推进游标
   // （否则它们之后万一成了解说员，会把攒下的播报一股脑念出来）。

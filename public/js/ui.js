@@ -32,7 +32,7 @@ export function getDraft(key) {
 // 避免将来某个函数型属性被误当成事件监听器绑上去。
 const EVENTS = new Set([
   'click', 'dblclick', 'change', 'input', 'submit', 'reset', 'keydown', 'keyup', 'keypress',
-  'focus', 'blur', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'scroll', 'contextmenu',
+  'focus', 'blur', 'pointerdown', 'pointerup', 'touchstart', 'touchend', 'scroll', 'contextmenu', 'toggle',
 ]);
 
 function applyAttr(node, k, v) {
@@ -122,6 +122,12 @@ export function el(tag, attrs = {}, children = []) {
   return node;
 }
 
+export function setPending(button, pending) {
+  button.disabled = pending;
+  button.setAttribute('aria-busy', String(pending));
+  button.classList.toggle('is-loading', pending);
+}
+
 export function esc(s) {
   return String(s == null ? '' : s)
     .replace(/&/g, '&amp;')
@@ -196,25 +202,45 @@ export async function copyText(text) {
   return false;
 }
 
-export function confirmDialog(title, body, opts = {}) {
-  return new Promise((resolve) => {
-    const root = document.getElementById('modal-root');
-    const close = (val) => { root.innerHTML = ''; resolve(val); };
+let activeDialog = null;
+let dialogSequence = 0;
+export function dismissDialog() { activeDialog?.(false); }
 
-    const modal = el('div', { class: 'modal-mask', click: (e) => { if (e.target === modal) close(false); } }, [
-      el('div', { class: 'modal glass' }, [
-        el('h3', { class: 'modal-title' }, title),
-        body ? el('p', { class: 'modal-body' }, body) : null,
-        el('div', { class: 'row spread modal-actions' }, [
-          el('button', { class: 'btn-ghost grow', click: () => close(false) }, opts.cancelText || '取消'),
-          el('button', {
-            class: opts.danger === false ? 'btn-primary grow' : 'btn-danger grow',
-            click: () => close(true),
-          }, opts.confirmText || '确认'),
-        ]),
-      ]),
+export function confirmDialog(title, body, opts = {}) {
+  dismissDialog();
+  return new Promise(resolve => {
+    const root = document.getElementById('modal-root');
+    if (!root) return resolve(false);
+    const previousFocus = document.activeElement;
+    const titleId = `dialog-title-${++dialogSequence}`;
+    let settled = false;
+    const close = value => {
+      if (settled) return;
+      settled = true; window.removeEventListener('keydown', onKey);
+      root.innerHTML = ''; document.body.classList.remove('modal-open');
+      activeDialog = null;
+      if (previousFocus?.isConnected) previousFocus.focus?.({ preventScroll: true });
+      resolve(value);
+    };
+    const cancel = el('button', { class: 'btn-ghost grow', type: 'button', click: () => close(false) }, opts.cancelText || '取消');
+    const confirm = el('button', { class: opts.danger === false ? 'btn-primary grow' : 'btn-danger grow', type: 'button', click: () => close(true) }, opts.confirmText || '确认');
+    const dialog = el('div', { class: 'modal glass', role: 'dialog', 'aria-modal': 'true', 'aria-labelledby': titleId, tabindex: '-1' }, [
+      el('span', { class: 'modal-symbol', 'aria-hidden': 'true' }, opts.danger === false ? '◇' : '!'),
+      el('h3', { class: 'modal-title', id: titleId }, title), body ? el('p', { class: 'modal-body' }, body) : null,
+      el('div', { class: 'row spread modal-actions' }, [cancel, confirm]),
     ]);
-    root.innerHTML = '';
-    root.appendChild(modal);
+    const mask = el('div', { class: 'modal-mask', click: e => { if (e.target === mask) close(false); } }, dialog);
+    const onKey = e => {
+      if (e.key === 'Escape') { e.preventDefault(); close(false); }
+      if (e.key === 'Tab') {
+        const controls = [...(dialog.querySelectorAll?.('button, input, select, textarea, a[href], [tabindex="0"]') || [])].filter(n => !n.disabled);
+        const first = controls[0]; const last = controls[controls.length - 1];
+        if (e.shiftKey && (document.activeElement === first || document.activeElement === dialog)) { e.preventDefault(); last?.focus(); }
+        else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); first?.focus(); }
+      }
+    };
+    root.innerHTML = ''; root.appendChild(mask);
+    document.body.classList.add('modal-open'); window.addEventListener('keydown', onKey); activeDialog = close;
+    requestAnimationFrame(() => { if (activeDialog === close) cancel.focus?.({ preventScroll: true }); });
   });
 }

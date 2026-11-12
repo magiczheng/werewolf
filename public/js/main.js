@@ -69,8 +69,27 @@ if (multiAccount) {
 // manifest / 添加到主屏幕 / 独立窗口显示在 HTTP 下依然可用。
 if ('serviceWorker' in navigator && window.isSecureContext) {
   window.addEventListener('load', () => {
-    navigator.serviceWorker.register('/sw.js').catch(() => {
-      /* 注册失败不影响使用 */
-    });
+    navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).then(registration => {
+      registration.addEventListener('updatefound', () => {
+        const worker = registration.installing;
+        worker?.addEventListener('statechange', () => {
+          if (worker.state !== 'installed' || !navigator.serviceWorker.controller || document.getElementById('update-notice')) return;
+          const notice = document.createElement('div');
+          notice.id = 'update-notice'; notice.className = 'update-notice'; notice.setAttribute('role', 'status');
+          const text = document.createElement('span');
+          const button = document.createElement('button');
+          button.className = 'btn-ghost'; button.type = 'button'; button.textContent = '刷新更新';
+          const paint = () => {
+            const playing = net.state?.gameStarted && !net.state.gameOver;
+            button.disabled = !!playing;
+            text.textContent = playing ? '新版本已就绪，本局结束后可刷新更新。' : '新版本已就绪，刷新即可使用。';
+          };
+          paint();
+          net.on(paint);
+          button.addEventListener('click', () => { if (!net.state?.gameStarted || net.state.gameOver) location.reload(); });
+          notice.append(text, button); document.body.appendChild(notice);
+        });
+      });
+    }).catch(() => { /* HTTPS is optional for LAN play; failed shell caching does not block a game. */ });
   });
 }

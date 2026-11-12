@@ -1,7 +1,8 @@
 // 大厅：房间号 / 二维码 / 座位 / 本局配置（只读）/ 开始
-import { el, esc, toast, confirmDialog, copyText } from '../ui.js';
+import { el, toast, confirmDialog, copyText } from '../ui.js';
 import { net, store } from '../net.js';
 import { seatGrid } from '../components/seats.js';
+import { roomControls, firstGameGuide } from '../components/roomControls.js';
 import { roleArt } from '../components/roleArt.js';
 import { pageIntro } from '../components/atmosphere.js';
 import { ROLE_META, RULES_LABELS } from '../constants.js';
@@ -32,9 +33,11 @@ export function renderLobby(root) {
 
   const seatCard = el('div', { class: 'card glass col seats-card' }, [
     el('div', { class: 'panel-title' }, [
-      '座位',
+      '选择你的座位',
       el('span', { class: 'pill', style: 'margin-left:8px' }, `${occupied}/${s.settings.playerCount}`),
     ]),
+    el('div', { class: 'seating-progress', role: 'progressbar', 'aria-label': '入座进度', 'aria-valuenow': occupied, 'aria-valuemin': 0, 'aria-valuemax': s.settings.playerCount }, el('span', { style: `width:${occupied / s.settings.playerCount * 100}%` })),
+    el('p', { class: 'hint seating-intro' }, me?.seat ? `你已坐在 ${me.seat} 号，等待朋友入座。` : '每个人都需要选座，角色将在开局后随机分配。'),
     seats,
     el('div', { class: 'hint' }, empty
       ? (me && !me.seat
@@ -49,7 +52,7 @@ export function renderLobby(root) {
       : null,
     s.waiting.length ? el('div', { class: 'waiting-block' }, [
       el('div', { class: 'hint' }, '已加入，等待选座'),
-      el('div', { class: 'waiting-row' }, s.waiting.map((w) => el('span', { class: 'waiting-chip' }, esc(w.name)))),
+      el('div', { class: 'waiting-row' }, s.waiting.map((w) => el('span', { class: 'waiting-chip' }, w.name))),
     ]) : null,
   ]);
 
@@ -100,7 +103,7 @@ export function renderLobby(root) {
     // 非法官看到的才是 {name, connected}——所以这里要兜底。
     s.judge ? el('div', { class: 'spread judge-row' }, [
       el('span', { class: 'hint' }, '👨‍⚖️ 法官'),
-      el('span', {}, esc(s.judge.name || (me.isJudge ? '你' : '—'))),
+      el('span', {}, s.judge.name || (me.isJudge ? '你' : '—')),
     ]) : null,
   ]);
 
@@ -110,16 +113,18 @@ export function renderLobby(root) {
       el('button', { class: 'link-btn', type: 'button', click: leaveRoom }, '退出'),
     ]),
     pageIntro('BEFORE THE MOONRISE', '好故事，等人齐。', '邀请朋友加入，选好座位，准备迎接第一个夜晚。'),
-    shareCard,
     seatCard,
+    shareCard,
   ];
 
   // ---------- 开始按钮 ----------
-  const canStart = !!(s.canStart && !s.canStart.error);
-  const startLabel = canStart ? '开始游戏' : ((s.canStart && s.canStart.error) || '开始游戏');
-  parts.push(el('button', {
-    class: 'btn-primary btn-big sticky-cta', type: 'button', disabled: !canStart, click: startGame,
-  }, startLabel));
+  const permitted = !!(me?.isHost || me?.isJudge);
+  const canStart = !!(permitted && s.canStart && !s.canStart.error);
+  const startLabel = !permitted ? '等待房主开始游戏' : canStart ? '开始游戏' : ((s.canStart && s.canStart.error) || '开始游戏');
+  parts.push(el('div', { class: 'lobby-launch' }, [
+    el('div', { class: 'launch-caption' }, [el('span', { class: 'launch-status-dot' + (canStart ? ' ready' : '') }), el('span', {}, canStart ? '所有席位已就绪' : `已入座 ${occupied} / ${s.settings.playerCount} · ${empty ? '等待朋友加入' : '准备开始'}`)]),
+    el('button', { class: 'btn-primary btn-big sticky-cta', type: 'button', disabled: !canStart, click: startGame }, startLabel),
+  ]));
 
   // ---------- 本局配置（只读）----------
   // 配置在创建房间时定好，进入大厅后不再允许修改——服务端也已移除修改入口，
@@ -151,5 +156,17 @@ export function renderLobby(root) {
       : null,
   ]));
 
-  root.appendChild(el('div', { class: 'view lobby-view col' }, parts));
+  parts.push(roomControls(s), firstGameGuide());
+  const old = root.children[0];
+  const view = el('div', { class: 'view lobby-view col' + (old?.classList.contains('lobby-view') ? '' : ' view-enter') }, parts);
+  if (old?.classList.contains('lobby-view') && old.dataset.room === code) {
+    const oldShare = [...old.children].find(n => n.classList.contains('share-box'));
+    if (oldShare && oldShare._shareKey === JSON.stringify(s.judge)) shareCard.replaceWith(oldShare);
+    const oldCfg = [...old.children].find(n => n.classList.contains('lobby-config'));
+    const newCfg = [...view.children].find(n => n.classList.contains('lobby-config'));
+    if (oldCfg && newCfg) newCfg.replaceWith(oldCfg);
+    old.replaceWith(view);
+  } else { root.innerHTML = ''; root.appendChild(view); }
+  shareCard._shareKey = JSON.stringify(s.judge);
+  view.dataset.room = code;
 }

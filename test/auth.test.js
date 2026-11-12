@@ -70,3 +70,19 @@ test('IP 限频：超限被拒', () => {
   // 其他 IP 不受影响
   assert.ok(!auth.register('r4@x.com', 'secret1', 'N', '7.7.7.7').error);
 });
+
+test('生产异步密码计算不会阻塞事件循环，且限制并发量', async () => {
+  const { auth, db } = setup({ maxHashing: 1 });
+  const first = auth.registerAsync('async@x.com', 'secret123', 'A', 'async-ip');
+  const second = await auth.registerAsync('second@x.com', 'secret123', 'B', 'another-ip');
+  assert.match(second.error, /繁忙/);
+  let advanced = false; await new Promise(resolve => setImmediate(() => { advanced = true; resolve(); }));
+  const user = await first; assert.equal(advanced, true); assert.ok(user.token);
+  assert.ok((await auth.loginAsync('async@x.com', 'secret123', 'async-ip')).token); db.close();
+});
+
+test('并发注册同一邮箱只创建一个账号，不抛数据库异常', async () => {
+  const { auth, db } = setup();
+  const results = await Promise.all([auth.registerAsync('race@x.com', 'secret123', 'A', 'ip'), auth.registerAsync('race@x.com', 'secret123', 'B', 'ip')]);
+  assert.equal(results.filter(r => r.token).length, 1); assert.match(results.find(r => r.error).error, /已注册/); db.close();
+});

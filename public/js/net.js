@@ -4,6 +4,7 @@ const io = window.io;
 let socket = null;
 let state = null;
 const listeners = new Set();
+const pendingActions = new Map();
 let syncTimer = null;     // 唤醒后向服务端要快照的等待计时器
 let lastPoke = 0;         // 防止 focus / visibilitychange 同时触发两次探测
 
@@ -105,9 +106,15 @@ export const net = {
       // 之前写成 `auth: { token: sessionToken() }`，只在页面加载时取一次；
       // 登录后再断线重连，携带的仍是登录前的空 token，服务端认不出人，
       // 表现就是「手机一锁屏，回来就得重新登录」。
-      auth: (cb) => cb({ token: sessionToken() }),
+      auth: (cb) => cb({ token: sessionToken(), protocol: 2 }),
     });
 
+    socket.on('sessionExpired', () => {
+      clearSession();
+      store.remove('ww_last_room');
+      this.clear();
+      listeners.forEach(fn => fn(null, 'sessionExpired'));
+    });
     socket.on('state', (s) => {
       state = s;
       listeners.forEach((fn) => fn(s, 'state'));
@@ -128,22 +135,29 @@ export const net = {
   },
 
   emit(event, payload = {}, timeoutMs = 10000) {
-    return new Promise((resolve, reject) => {
-      if (!socket) { reject(new Error('尚未连接')); return; }
+    if (!socket || !socket.connected) return Promise.reject(new Error('网络未连接，请恢复连接后重试'));
+    const contextual = state && !['createRoom', 'joinRoom', 'sync', 'logout', 'login', 'register'].includes(event);
+    const key = JSON.stringify([event, payload, contextual ? state.phaseId : null]);
+    if (pendingActions.has(key)) return pendingActions.get(key);
+    const actionId = (crypto.randomUUID && crypto.randomUUID()) || Math.random().toString(36).slice(2) + Date.now();
+    const request = contextual ? { ...payload, _context: { roomCode: state.roomCode, gameId: state.gameId, phaseId: state.phaseId, actionId } } : payload;
+    const promise = new Promise((resolve, reject) => {
       let done = false;
       const timer = setTimeout(() => {
         if (done) return;
         done = true;
-        reject(new Error('服务器无响应，请检查网络'));
+        reject(new Error('服务器无响应，请检查当前操作结果后重试'));
       }, timeoutMs);
-      socket.emit(event, payload, (res) => {
+      socket.emit(event, request, (res) => {
         if (done) return;
         done = true;
         clearTimeout(timer);
         if (res && res.error) reject(new Error(res.error));
         else resolve(res || {});
       });
-    });
+    }).finally(() => pendingActions.delete(key));
+    pendingActions.set(key, promise);
+    return promise;
   },
 
   connected() {
@@ -178,6 +192,7 @@ export const net = {
   async logout() {
     try { await this.emit('logout', {}); } catch (_e) { /* 断线时也允许本地登出 */ }
     saveSession(null);
+    this.clear();
   },
 };
 

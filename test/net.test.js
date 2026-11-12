@@ -21,11 +21,11 @@ test('Socket.IO 的 auth 是函数：每次（重）连都读取当前 token', a
 
   assert.equal(typeof sock.opts.auth, 'function',
     'auth 必须是函数，否则 token 只会在页面加载时读取一次');
-  assert.deepEqual(await authToken(sock), { token: 'token-before-login' });
+  assert.deepEqual(await authToken(sock), { token: 'token-before-login', protocol: 2 });
 
   // 模拟登录后 token 变化，同一条连接再次握手（重连）时应带上新 token
   store.set('ww_token', 'token-after-login');
-  assert.deepEqual(await authToken(sock), { token: 'token-after-login' });
+  assert.deepEqual(await authToken(sock), { token: 'token-after-login', protocol: 2 });
 });
 
 test('回到前台 sync 探活：有 ack 保持连接，无 ack 则强制重连', (t) => {
@@ -62,4 +62,20 @@ test('回到前台 sync 探活：有 ack 保持连接，无 ack 则强制重连'
   t.mock.timers.tick(5000);
   assert.equal(disconnects, 1, '5 秒无 ack 后应强制断开');
   assert.equal(reconnects, 1, '并立即重建连接，让 Socket.IO 重新握手');
+});
+
+test('离线操作立即拒绝，不进入 Socket.IO 待发送队列', async () => {
+  net.connect(); const sock = env.lastSocket(); sock.connected = false;
+  await assert.rejects(net.emit('exileVote', { target: 2 }), /网络未连接/);
+  assert.equal(sock.emitted.length, 0);
+});
+
+test('相同在途操作只发送一次，并携带当前对局和阶段标识', async () => {
+  net.connect(); const sock = env.lastSocket();
+  sock.fire('state', { roomCode: 'ABC123', gameId: 'game-1', phaseId: 'phase-1' });
+  const first = net.emit('exileVote', { target: 3 }); const duplicate = net.emit('exileVote', { target: 3 });
+  assert.equal(first, duplicate); await first;
+  const sent = sock.emitted.filter(e => e.event === 'exileVote'); assert.equal(sent.length, 1);
+  assert.equal(sent[0].payload._context.gameId, 'game-1'); assert.equal(sent[0].payload._context.phaseId, 'phase-1');
+  assert.ok(sent[0].payload._context.actionId);
 });

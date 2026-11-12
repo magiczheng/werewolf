@@ -1,3 +1,4 @@
+import { ROLE_LIMITS } from '../public/js/gameRules.js';
 // 角色定义、阵营与默认板子生成器
 
 export const CAMPS = {
@@ -127,6 +128,7 @@ export function validateRoles(roles, playerCount) {
   for (const key of ROLE_KEYS) {
     const n = Number(roles[key]) || 0;
     if (!Number.isInteger(n) || n < 0) return `「${ROLES[key].name}」数量非法`;
+    if (n > ROLE_LIMITS[key]) return `「${ROLES[key].name}」最多 ${ROLE_LIMITS[key]} 名`;
     total += n;
     if (campOf(key) === CAMPS.WOLF) wolves += n;
   }

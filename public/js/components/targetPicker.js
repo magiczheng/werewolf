@@ -1,49 +1,43 @@
-// 目标选择器：夜间行动、投票、开枪等场景共用。
-import { el, esc } from '../ui.js';
+import { el } from '../ui.js';
 
-/**
- * @param {Array} targets  [{ seat, name }]
- * @param {string} hint    说明文案
- * @param {(seat:number)=>void} onPick
- * @param {object} opts    { selected: number, allowEmpty: bool, emptyText: string, onEmpty: fn }
- */
 export function targetPicker(targets, hint, onPick, opts = {}) {
   let selected = opts.selected || 0;
-  const grid = el('div', { class: 'target-grid' });
-
+  let submitting = false;
+  const grid = el('div', { class: 'target-grid' + (targets.length <= 9 ? ' compact' : '') });
   const paint = () => {
     for (const chip of grid.children) {
-      chip.classList.toggle('selected', Number(chip.dataset.seat) === selected);
+      const active = Number(chip.dataset.seat) === selected;
+      chip.classList.toggle('selected', active);
+      chip.setAttribute('aria-pressed', String(active));
     }
   };
-
-  for (const t of targets) {
-    const chip = el('div', { class: 'target-chip', 'data-seat': t.seat }, [
-      el('span', { class: 't-seat' }, `${t.seat}号`),
-      el('span', { class: 't-name' }, esc(t.name)),
-    ]);
-    chip.addEventListener('click', () => {
-      selected = t.seat;
+  let emptyButton;
+  async function submit(seat, action) {
+    if (submitting) return;
+    submitting = true;
+    const previous = selected; selected = seat; paint();
+    grid.setAttribute('aria-busy', 'true');
+    for (const chip of grid.children) { chip.disabled = true; chip.classList.toggle('is-submitting', Number(chip.dataset.seat) === seat); }
+    if (emptyButton) emptyButton.disabled = true;
+    try { const result = await action(); if (result?.error) selected = previous; }
+    catch (_) { selected = previous; }
+    finally {
+      submitting = false; grid.setAttribute('aria-busy', 'false');
+      for (const chip of grid.children) { chip.disabled = false; chip.classList.remove('is-submitting'); }
+      if (emptyButton) emptyButton.disabled = false;
       paint();
-      onPick(t.seat);
-    });
-    grid.appendChild(chip);
+    }
   }
+  for (const t of targets) grid.appendChild(el('button', {
+    class: 'target-chip', type: 'button', 'data-seat': t.seat, 'aria-label': `${t.seat}号 ${t.name}`, title: `${t.seat}号 ${t.name}`,
+    click: () => submit(t.seat, () => onPick(t.seat)),
+  }, [el('span', { class: 'target-avatar', 'aria-hidden': 'true' }, [...String(t.name || '')][0] || '·'), el('span', { class: 't-seat' }, `${t.seat}号`), el('span', { class: 't-name' }, t.name)]));
   paint();
-
-  const wrap = el('div', { class: 'picker' }, [
-    hint ? el('div', { class: 'hint' }, hint) : null,
-    targets.length ? grid : el('div', { class: 'hint muted' }, '暂无可选目标'),
-  ]);
-
+  const wrap = el('div', { class: 'picker' }, [hint ? el('div', { class: 'hint picker-hint' }, hint) : null,
+    targets.length ? grid : el('div', { class: 'hint muted' }, '暂无可选目标')]);
   if (opts.allowEmpty) {
-    const btn = el('button', {
-      class: 'btn-ghost',
-      type: 'button',
-      click: () => { selected = 0; paint(); opts.onEmpty && opts.onEmpty(); },
-    }, opts.emptyText || '弃票');
-    wrap.appendChild(btn);
+    emptyButton = el('button', { class: 'btn-ghost picker-abstain', type: 'button', click: () => submit(0, () => opts.onEmpty?.()) }, opts.emptyText || '弃票');
+    wrap.appendChild(emptyButton);
   }
-
   return wrap;
 }

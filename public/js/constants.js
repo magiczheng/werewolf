@@ -29,13 +29,7 @@ export const PLAYER_COUNTS = [9, 10, 11, 12, 13, 14, 15, 16];
 /** 创建房间时预选的人数（板子取 DEFAULT_BOARDS[此值]）。 */
 export const DEFAULT_PLAYER_COUNT = 9;   // 主流起点是 9 人局（3 狼 + 3 神 + 3 民）
 
-export const DEFAULT_RULES = {
-  firstNightWitchSelfHeal: true,
-  guardWitchConflict: false,
-  sheriffBeforeDeath: true,
-  killSide: true,
-  revealOnExile: false,
-};
+export { RULE_DEFAULTS as DEFAULT_RULES } from './gameRules.js';
 
 export const RULES_LABELS = [
   ['firstNightWitchSelfHeal', '女巫首夜可自救'],
