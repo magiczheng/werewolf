@@ -1,3 +1,5 @@
+import { randomUUID } from 'node:crypto';
+import { normalizeRules } from '../public/js/gameRules.js';
 // 狼人杀游戏引擎 —— 纯逻辑、无 I/O，可单测。
 // 与 socket 层的唯一接口：onChange(room) 回调（状态变化时通知外部广播快照）。
 // 推进模型：**没有任何倒计时**，阶段何时结束完全由人决定，见 endPhase()：
@@ -15,7 +17,7 @@
 //   · 票型只发给狼队，好人和法官面板都看不到（法官面板走 _judgeState，只给汇总）
 
 import { ROLES, WOLF_ROLES, GOD_ROLES, CAMPS, isWolf, validateRoles, defaultBoardFor } from './roles.js';
-import { DEFAULT_RULES, DEFAULT_ROLES, NIGHT_MASK_MIN_MS, NIGHT_MASK_MAX_MS } from './config.js';
+import { DEFAULT_ROLES, NIGHT_MASK_MIN_MS, NIGHT_MASK_MAX_MS } from './config.js';
 
 export const PHASE = {
   LOBBY: 'lobby',
@@ -50,7 +52,8 @@ const NIGHT_ORDER = [
 ];
 
 /** 根据客户端输入构建一份合法的 settings；非法则抛出 Error。 */
-export function buildSettings(input) {
+export function buildSettings(input = {}) {
+  if (!input || typeof input !== 'object') throw new Error('房间配置无效');
   const playerCount = Number(input.playerCount);
   if (!Number.isInteger(playerCount) || playerCount < 9 || playerCount > 16) {
     throw new Error('游戏人数需为 9~16');
@@ -58,7 +61,7 @@ export function buildSettings(input) {
   const roles = {};
   if (input.roles) {
     for (const k of Object.keys(DEFAULT_ROLES)) {
-      roles[k] = Math.max(0, Number(input.roles[k]) || 0);
+      roles[k] = Number(input.roles[k] ?? 0);
     }
   } else {
     // 未指定角色时按人数套用默认板子
@@ -71,7 +74,7 @@ export function buildSettings(input) {
     playerCount,
     judgeMode: !!input.judgeMode,
     roles,
-    rules: { ...DEFAULT_RULES, ...(input.rules || {}) },
+    rules: normalizeRules(input.rules),
   };
 }
 
@@ -99,6 +102,14 @@ export class Room {
    */
   constructor(opts) {
     this.code = opts.code;
+    this.gameId = randomUUID();
+    this.phaseId = randomUUID();
+    this.revision = 0;
+    this.historySeq = 0;
+    this.receipts = new Map();
+    this.history = [];
+    this.privateHistory = [];
+    this.voteHistory = [];
     this.settings = opts.settings;
     this.hostPlayerId = opts.hostPlayerId;
     this.onChange = opts.onChange || null;
@@ -142,7 +153,7 @@ export class Room {
   _mkPlayer(playerId, name, extra = {}) {
     return {
       playerId, name,
-      seat: null, role: null, alive: true, connected: true,
+      seat: null, role: null, alive: true, connected: true, disconnectedAt: null,
       isJudge: false, roleReady: false, revealed: false, idiotFlipped: false,
       witchHealUsed: false, witchPoisonUsed: false,
       guardLastTarget: null, seerHistory: [],
@@ -154,11 +165,21 @@ export class Room {
     // id 单调递增：客户端靠它判断「这条播报是不是已经念过了」。
     // 不能用数组下标——播报上限 40 条，满了会从头部裁掉，下标会整体错位。
     this.newsSeq = (this.newsSeq || 0) + 1;
-    this.news.push({ id: this.newsSeq, t: Date.now(), text });
+    const entry = { seq: ++this.historySeq, id: this.newsSeq, t: Date.now(), day: this.day, phase: this.phase, text };
+    this.news.push(entry);
+    this.history.push(entry);
+    if (this.history.length > 1000) this.history.shift();
     if (this.news.length > 40) this.news.splice(0, this.news.length - 40);
   }
 
+  _recordAction(p, action, target, detail = '') {
+    this.privateHistory.push({ seq: ++this.historySeq, t: Date.now(), day: this.day, phase: this.phase,
+      text: `${p.seat}号 ${ROLES[p.role].name} · ${action}${target ? ' ' + target + '号' : ''}${detail}` });
+    if (this.privateHistory.length > 1000) this.privateHistory.shift();
+  }
+
   touch() {
+    this.revision++;
     this.lastActive = Date.now();
     if (this.onChange) this.onChange(this);
   }
@@ -211,7 +232,9 @@ export class Room {
   setConnected(playerId, connected) {
     const p = this.players.get(playerId);
     if (!p) return;
+    if (p.connected === connected) return;
     p.connected = connected;
+    p.disconnectedAt = connected ? null : (p.disconnectedAt || Date.now());
     this.touch();
   }
 
@@ -269,10 +292,88 @@ export class Room {
 
   leave(playerId) {
     const p = this.players.get(playerId);
-    if (!p) return;
+    if (!p) return { ok: true };
+    if (this.gameStarted && !this.gameOver) return { error: '对局进行中，请保留座位；离线后可重新登录回到本局' };
     if (p.seat) this.seatMap[p.seat] = null;
     this.players.delete(playerId);
+    if (playerId === this.hostPlayerId) {
+      const next = [...this.players.values()].sort((a, b) => Number(b.connected) - Number(a.connected))[0];
+      if (next) this._assignHost(next);
+    }
     this.touch();
+    return { ok: true };
+  }
+
+  _assignHost(p) {
+    const oldJudge = this.players.get(this.judgePlayerId);
+    if (this.settings.judgeMode) {
+      if (oldJudge) oldJudge.isJudge = false;
+      if (p.seat) this.seatMap[p.seat] = null;
+      p.seat = null;
+      p.isJudge = true;
+      this.judgePlayerId = p.playerId;
+    }
+    this.hostPlayerId = p.playerId;
+    this._news('房主已移交给 ' + p.name);
+  }
+
+  transferHost(playerId, targetId) {
+    if (playerId !== this.hostPlayerId) return { error: '只有房主可以移交' };
+    const target = this.players.get(targetId);
+    if (!target || !target.connected || targetId === playerId) return { error: '请选择另一位在线成员' };
+    if (this.settings.judgeMode && this.gameStarted && !this.gameOver) return { error: '法官身份只能在开局前移交' };
+    this._assignHost(target);
+    this.touch();
+    return { ok: true };
+  }
+
+  canClaimHost(playerId, now = Date.now()) {
+    const host = this.players.get(this.hostPlayerId);
+    const p = this.players.get(playerId);
+    return !!(p && p.connected && !this.settings.judgeMode && playerId !== this.hostPlayerId
+      && host && !host.connected && host.disconnectedAt && now - host.disconnectedAt >= 60000);
+  }
+
+  claimHost(playerId) {
+    if (!this.canClaimHost(playerId)) return { error: '房主离线满 60 秒后，在线成员可接任；法官模式请等待法官重连' };
+    this._assignHost(this.players.get(playerId));
+    this.touch();
+    return { ok: true };
+  }
+
+  recoverOffline(playerId, now = Date.now()) {
+    if (playerId !== this.hostPlayerId || this.settings.judgeMode) return { error: '仅自动模式房主可处理离线操作' };
+    const offline = p => p && !p.connected && p.disconnectedAt && now - p.disconnectedAt >= 60000;
+    let handled = false;
+    if (this.phase === PHASE.ROLE_REVEAL) {
+      for (const p of this._livePlayers()) if (!p.roleReady && offline(p)) { p.roleReady = true; handled = true; }
+    } else if ([PHASE.DAY_VOTE, PHASE.VOTE_PK, PHASE.SHERIFF_VOTE, PHASE.SHERIFF_PK].includes(this.phase)) {
+      const sheriff = this.phase.startsWith('sheriff');
+      const state = sheriff ? this.sheriffState : this.voteState;
+      for (const p of sheriff ? this._sheriffVoters() : this._voteEligible()) {
+        if (!state.votes.has(p.playerId) && offline(p)) { state.votes.set(p.playerId, 0); handled = true; }
+      }
+    } else if (this.phase === PHASE.SHERIFF_DECLARE) {
+      if (!this.sheriffState) this._initSheriffState();
+      for (const p of this._livePlayers()) if (offline(p) && !this.sheriffState.onPodium.has(p.seat) && !this.sheriffState.withdrawn.has(p.seat)) {
+        this.sheriffState.withdrawn.add(p.seat); handled = true;
+      }
+    } else {
+      const role = this._nightRoleOf(this.phase);
+      const actor = role ? this._playerAt(this._liveRoleSeat(role))
+        : this._playerAt(this.phaseState.speakerSeat || this.phaseState.seat);
+      const wolvesOffline = this.phase === PHASE.NIGHT_WOLVES && this._liveWolves().length && this._liveWolves().every(offline);
+      if ((actor && offline(actor)) || wolvesOffline) {
+        this._news('房主确认：本阶段离线操作按空过处理');
+        this.advance();
+        return { ok: true };
+      }
+    }
+    if (!handled) return { error: '没有离线满 60 秒且待操作的成员；部分狼人离线时请等待队友重连' };
+    this._news('房主确认：离线成员本阶段按确认身份、不上警或弃票处理');
+    this._maybeComplete();
+    this.touch();
+    return { ok: true };
   }
 
   canStart() {
@@ -288,6 +389,11 @@ export class Room {
     const chk = this.canStart();
     if (chk.error) return chk;
     this.gameStarted = true;
+    this.gameId = randomUUID();
+    this.receipts.clear();
+    this.history = [];
+    this.privateHistory = [];
+    this.voteHistory = [];
     this.day = 0;
     this.news = [];
     this.totalDeaths = 0;
@@ -334,6 +440,7 @@ export class Room {
 
   _startPhase(phase, extra = {}) {
     this.phase = phase;
+    this.phaseId = randomUUID();
     // 没有倒计时，因此没有 deadline；何时推进由 endPhase() 或自动完成条件决定。
     this.phaseState = { ...extra };
     this._announcePhase(phase, extra);
@@ -834,6 +941,7 @@ export class Room {
       this.sheriffState.onPodium.delete(seat);
       this.sheriffState.withdrawn.add(seat);
     }
+    if (this.phase === PHASE.SHERIFF_SPEECH) this.phaseState.candidates = this._activeCandidates();
     this.touch();
     this._maybeComplete();
     return { ok: true };
@@ -859,7 +967,7 @@ export class Room {
       this._noSheriff('全体上警，无警下玩家，警徽流失，本局无警长');
       return;
     }
-    this._startPhase(PHASE.SHERIFF_SPEECH, { candidates: cands, speakerIndex: 0, speakerSeat: cands[0] });
+    this._startPhase(PHASE.SHERIFF_SPEECH, { candidates: cands, speechOrder: [...cands], spoken: [], speakerIndex: 0, speakerSeat: cands[0] });
   }
 
   _activeCandidates() {
@@ -870,13 +978,19 @@ export class Room {
 
   _nextSpeechOrVote() {
     const cands = this._activeCandidates();
-    const idx = this.phaseState.speakerIndex || 0;
-    if (idx + 1 < cands.length) {
-      // 候选人依次发言，由当前发言者本人点「结束发言」推进到下一位。
-      // 这里直接改 phaseState 而不是 _startPhase，所以播报要手动补一句。
-      this.phaseState.speakerIndex = idx + 1;
-      this.phaseState.speakerSeat = cands[idx + 1];
-      this._news(`${cands[idx + 1]}号 开始竞选发言`);
+    const ps = this.phaseState;
+    const spoken = new Set(ps.spoken || []);
+    if (ps.speakerSeat) spoken.add(ps.speakerSeat);
+    const order = ps.speechOrder || ps.candidates || cands;
+    const next = order.find(seat => cands.includes(seat) && !spoken.has(seat));
+    if (next != null && cands.length > 1) {
+      ps.spoken = [...spoken];
+      ps.speechOrder = order;
+      ps.speakerIndex = order.indexOf(next);
+      ps.speakerSeat = next;
+      ps.candidates = cands;
+      this.phaseId = randomUUID();
+      this._news(`${next}号 开始竞选发言`);
       this.touch();
       return;
     }
@@ -922,6 +1036,7 @@ export class Room {
   }
 
   _resolveSheriffVote() {
+    this._recordVotes('警长投票', this.sheriffState.votes, false);
     const tally = this._tally(this.sheriffState.votes, null);
     if (tally.size === 0) { this._noSheriff(); return; }
     const winners = this._maxKeys(tally);
@@ -932,6 +1047,7 @@ export class Room {
   }
 
   _resolveSheriffPk() {
+    this._recordVotes('警长 PK', this.sheriffState.votes, false);
     const tally = this._tally(this.sheriffState.votes, null);
     if (tally.size === 0) { this._noSheriff(); return; }
     const winners = this._maxKeys(tally);
@@ -988,6 +1104,7 @@ export class Room {
     target = Number(target) || 0;
     if (target === p.seat) return { error: '不能投给自己' };
     if (target !== 0) {
+      if (this._playerAt(target)?.idiotFlipped) return { error: '已翻牌的白痴不能被放逐' };
       if (this.phase === PHASE.VOTE_PK) {
         if (!this.voteState.pkCandidates.includes(target)) return { error: '目标无效' };
       } else if (!this._validTarget(target)) {
@@ -1004,6 +1121,13 @@ export class Room {
     const voters = this._voteEligible();
     if (!voters.length) return true;
     return voters.every(v => this.voteState.votes.has(v.playerId));
+  }
+
+  _recordVotes(kind, votes, weighted) {
+    this.voteHistory.push({ day: this.day, kind, t: Date.now(), ballots: [...votes].map(([pid, target]) => ({
+      seat: this._seatOf(pid), target, weight: weighted ? this._sheriffWeight(this.players.get(pid)) / 2 : 1,
+    })) });
+    if (this.voteHistory.length > 100) this.voteHistory.shift();
   }
 
   _tally(votes, weightFor) {
@@ -1030,6 +1154,7 @@ export class Room {
   _sheriffWeight = (p) => (p.seat === this.sheriff ? Math.round(2 * this.settings.rules.sheriffVoteWeight) : 2);
 
   _resolveDayVote() {
+    this._recordVotes('放逐投票', this.voteState.votes, true);
     const tally = this._tally(this.voteState.votes, this._sheriffWeight);
     if (tally.size === 0) {
       this._news('投票无人被放逐（平安日）');
@@ -1045,6 +1170,7 @@ export class Room {
   }
 
   _resolvePkVote() {
+    this._recordVotes('放逐 PK', this.voteState.votes, true);
     const tally = this._tally(this.voteState.votes, this._sheriffWeight);
     if (tally.size === 0) {
       this._news('PK 无人出局（平安日）');
@@ -1060,6 +1186,7 @@ export class Room {
   _doExile(seat) {
     const p = this._playerAt(seat);
     if (!p) return;
+    if (p.idiotFlipped) return;
     this._news(`${seat}号 被放逐`);
     if (p.role === 'idiot' && !p.idiotFlipped) {
       p.idiotFlipped = true;
@@ -1251,6 +1378,7 @@ export class Room {
       this._news(winners === CAMPS.GOOD ? '🎉 好人阵营获胜！' : '🐺 狼人阵营获胜！');
       for (const p of this.players.values()) if (p.seat) p.revealed = true;
       this.phase = PHASE.GAME_OVER;
+      this.phaseId = randomUUID();
       this.phaseState = {};
       return true;
     }
@@ -1273,6 +1401,7 @@ export class Room {
         const target = Number(action.target);
         if (!this._validTarget(target, { exclude: [seat], excludeWolves: true })) return { error: '目标无效' };
         n.wolfVotes[seat] = target;
+        this._recordAction(p, '投刀', target);
         // 全员选完后立刻计票：过半敲定刀口，无人过半则清空重投
         this._resolveWolfVote();
         this.touch();
@@ -1285,6 +1414,7 @@ export class Room {
         if (!this._validTarget(target, { exclude: [p.guardLastTarget || -1] })) return { error: '目标无效（不能连续守护同一人）' };
         n.guardTarget = target;
         p.guardLastTarget = target;
+        this._recordAction(p, '守护', target);
         this.touch();
         this._finishNightAction();   // 守护完直接走，不用再点结束
         return { ok: true };
@@ -1306,6 +1436,7 @@ export class Room {
         const tp = this._playerAt(target);
         n.seerResult = { seat: target, camp: isWolf(tp.role) ? 'wolf' : 'good' };
         p.seerHistory.push({ seat: target, camp: n.seerResult.camp, day: this.day });
+        this._recordAction(p, '查验', target, n.seerResult.camp === 'wolf' ? '：狼人' : '：好人');
         this.touch();
         this._finishNightAction();   // 验完直接走
         return { ok: true };
@@ -1313,6 +1444,7 @@ export class Room {
       case 'witchAct': {
         if (this.phase !== PHASE.NIGHT_WITCH) return { error: '现在不是女巫行动阶段' };
         if (p.role !== 'witch') return { error: '你不是女巫' };
+        if (n.witchHeal != null || n.witchPoison != null) return { error: '同一晚只能使用一种药水' };
         const kind = action.kind;
         const target = Number(action.target);
         if (kind === 'heal') {
@@ -1322,11 +1454,13 @@ export class Room {
           if (target === seat && !(this.day === 1 && this.settings.rules.firstNightWitchSelfHeal)) return { error: '今夜不能救自己' };
           p.witchHealUsed = true;
           n.witchHeal = target;
+          this._recordAction(p, '使用解药救', target);
         } else if (kind === 'poison') {
           if (p.witchPoisonUsed) return { error: '毒药已使用' };
           if (!this._validTarget(target, { exclude: [seat] })) return { error: '目标无效' };
           p.witchPoisonUsed = true;
           n.witchPoison = target;
+          this._recordAction(p, '使用毒药毒', target);
         } else {
           return { error: '无效操作' };
         }
@@ -1344,6 +1478,8 @@ export class Room {
     if (playerId !== this.hostPlayerId && playerId !== this.judgePlayerId) return { error: '无权限' };
     this.gameStarted = false;
     this.gameOver = null;
+    this.gameId = randomUUID();
+    this.phaseId = randomUUID();
     this.phase = PHASE.LOBBY;
     this.phaseState = {};
     this.day = 0;
@@ -1355,9 +1491,13 @@ export class Room {
     this._deferredNightDeaths = null;
     this._sheriffElectionDone = false;
     this.news = [];
+    this.history = [];
+    this.privateHistory = [];
+    this.voteHistory = [];
+    this.receipts.clear();
     this.totalDeaths = 0;
     for (const p of this.players.values()) {
-      if (p.seat) {
+      {
         p.role = null; p.alive = true; p.roleReady = false; p.revealed = false;
         p.idiotFlipped = false; p.witchHealUsed = false; p.witchPoisonUsed = false;
         p.guardLastTarget = null; p.seerHistory = [];
@@ -1390,6 +1530,7 @@ export class Room {
         this.gameOver = { winners: camp, forced: true };
         for (const p of this.players.values()) if (p.seat) p.revealed = true;
         this.phase = PHASE.GAME_OVER;
+      this.phaseId = randomUUID();
         this.phaseState = {};
         this._news(camp === CAMPS.GOOD ? '法官裁定：好人阵营获胜' : '法官裁定：狼人阵营获胜');
         this.touch();
@@ -1406,6 +1547,13 @@ export class Room {
     const me = this.players.get(viewerId);
     const s = {
       roomCode: this.code,
+      gameId: this.gameId, phaseId: this.phaseId, revision: this.revision,
+      host: (() => { const h = this.players.get(this.hostPlayerId); return h ? { name: h.name, connected: h.connected, seat: h.seat, disconnectedAt: h.disconnectedAt } : null; })(),
+      canClaimHost: this.canClaimHost(viewerId),
+      hostCandidates: me?.playerId === this.hostPlayerId ? [...this.players.values()].filter(p => p.connected && p.playerId !== viewerId).map(p => ({ playerId: p.playerId, name: p.name, seat: p.seat })) : [],
+      offlinePlayers: [...this.players.values()].filter(p => !p.connected).map(p => ({ playerId: p.playerId, seat: p.seat, name: p.name, disconnectedAt: p.disconnectedAt, isJudge: p.isJudge })),
+      voteHistory: this.voteHistory,
+      replay: this.gameOver ? [...this.history, ...this.privateHistory].sort((a, b) => a.seq - b.seq) : null,
       judgeMode: this.settings.judgeMode,
       gameStarted: this.gameStarted,
       gameOver: this.gameOver,
@@ -1542,6 +1690,7 @@ export class Room {
         healLeft: !p.witchHealUsed,
         poisonLeft: !p.witchPoisonUsed,
         killTarget: this.night ? this.night.wolfTarget : null,
+        actedTonight: !!(this.night && (this.night.witchHeal != null || this.night.witchPoison != null)),
         canSelfHeal: this.day === 1 && this.settings.rules.firstNightWitchSelfHeal,
       };
     }

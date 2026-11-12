@@ -49,7 +49,7 @@ app.use(express.static(path.join(__dirname, '../public'), {
     // （浏览器自身还有 24 小时上限，这里显式声明更稳妥）。
     // 其余静态资源保持 express 默认的 ETag 校验——零构建项目不能给 JS 设长缓存，
     // 否则部署后会新旧模块错配。
-    if (filePath.endsWith(`${path.sep}sw.js`)) res.setHeader('Cache-Control', 'no-cache');
+    if (/\.(?:js|css|html)$/.test(filePath)) res.setHeader('Cache-Control', 'no-cache');
   },
 }));
 
@@ -57,7 +57,7 @@ app.use(express.static(path.join(__dirname, '../public'), {
 // 分享地址基于请求 Host 推导：公网部署时是域名，局域网时是本机 IP，二者通用。
 app.get('/api/qr', async (req, res) => {
   const room = String(req.query.room || '').toUpperCase().trim();
-  if (!room) return res.status(400).json({ error: '缺少房间号' });
+  if (!/^[A-Z2-9]{6}$/.test(room)) return res.status(400).json({ error: '房间号无效' });
   const host = PUBLIC_URL || `${req.protocol}://${req.get('host')}`;
   const url = `${host}/?room=${room}`;
   try {
@@ -69,20 +69,29 @@ app.get('/api/qr', async (req, res) => {
 });
 
 // 健康检查
-app.get('/api/health', (_req, res) => res.json({ ok: true }));
-
-// 进程级兜底：socket 处理器已逐个包了 try/catch，但异步回调、定时器里的异常
-// 仍可能逃逸到进程级。对局状态全在内存里、丢了就没了，而且一桌人正玩到一半——
-// 此时「记下错误继续服务」明显好过「整个进程退出，8 个人一起掉线」。
-// 代价是异常之后进程状态可能不干净，所以这里把日志打得很响，便于事后定位。
-process.on('uncaughtException', (e) => {
-  console.error('❌ 未捕获异常（服务继续运行，但请排查）：', e);
-});
-process.on('unhandledRejection', (reason) => {
-  console.error('❌ 未处理的 Promise 拒绝（服务继续运行，但请排查）：', reason);
+app.get('/api/health', (_req, res) => {
+  try { db.prepare('SELECT 1').get(); res.json({ ok: true }); }
+  catch (_) { res.status(503).json({ ok: false }); }
 });
 
-initSocket(server);
+// Recoverable command errors are isolated in socket.js. Fatal process errors stop accepting
+// work and exit; the supervisor restarts the service and restores committed room snapshots.
+let stopping = false;
+function shutdown(reason, error) {
+  if (stopping) return;
+  stopping = true;
+  console.error(JSON.stringify({ level: error ? 'error' : 'info', event: reason, message: error?.message }));
+  const exitCode = error ? 1 : 0;
+  setTimeout(() => process.exit(exitCode), 5000).unref();
+  runtime.io.close(() => { db.close(); process.exit(exitCode); });
+}
+process.on('uncaughtException', e => shutdown('uncaught_exception', e));
+process.on('unhandledRejection', e => shutdown('unhandled_rejection', e instanceof Error ? e : new Error(String(e))));
+process.on('SIGTERM', () => shutdown('sigterm'));
+process.on('SIGINT', () => shutdown('sigint'));
+server.on('error', e => { console.error(JSON.stringify({ level: 'error', event: 'listen_failed', code: e.code })); process.exit(1); });
+
+const runtime = initSocket(server);
 
 // 测试账号种子：必须在 listen 之前跑完，否则首批访问可能遇到「账号还没建好」
 if (SEED_ACCOUNTS) seedAndLog(db);

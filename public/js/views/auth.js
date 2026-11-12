@@ -1,5 +1,5 @@
 // 未登录时的首页：登录 / 注册
-import { el } from '../ui.js';
+import { el, setPending } from '../ui.js';
 import { toast } from '../ui.js';
 import { net, session, setPlayerName } from '../net.js';
 import { atmosphere, pageIntro } from '../components/atmosphere.js';
@@ -33,7 +33,7 @@ export function renderAuth(root, onDone) {
     const password = passInput.value;
     if (!email || !password) return toast('请输入邮箱和密码', true);
     busy = true;
-    btn.disabled = true;
+    setPending(btn, true);
     try {
       if (mode === 'login') await net.login(email, password);
       else await net.register(email, password, nameInput.value.trim());
@@ -44,7 +44,7 @@ export function renderAuth(root, onDone) {
       toast(e.message, true);
     } finally {
       busy = false;
-      btn.disabled = false;
+      setPending(btn, false);
     }
   }
 
@@ -88,17 +88,17 @@ export function renderAuth(root, onDone) {
     testRow,
   ]);
 
-  root.appendChild(el('div', { class: 'view auth-view' }, [
+  root.appendChild(el('div', { class: 'view auth-view view-enter' }, [
     atmosphere(),
     el('section', { class: 'auth-content' }, [
     pageIntro('YOUR SEAT IS WAITING', mode === 'login' ? '欢迎回到月夜' : '成为月夜的一员', '落座之前，先让我们认识一下。'),
     el('div', { class: 'tabs glass' }, [
       el('button', {
-        class: 'tab' + (mode === 'login' ? ' active' : ''), type: 'button',
+        class: 'tab' + (mode === 'login' ? ' active' : ''), type: 'button', 'aria-pressed': String(mode === 'login'),
         click: () => { mode = 'login'; onDone(); },
       }, '登录'),
       el('button', {
-        class: 'tab' + (mode === 'register' ? ' active' : ''), type: 'button',
+        class: 'tab' + (mode === 'register' ? ' active' : ''), type: 'button', 'aria-pressed': String(mode === 'register'),
         click: () => { mode = 'register'; onDone(); },
       }, '注册'),
     ]),

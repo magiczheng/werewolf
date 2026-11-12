@@ -28,6 +28,9 @@ services:
     environment:
       PORT: 3000
       DB_PATH: /app/data/werewolf.db
+      MAX_ROOMS: 500
+      # 若前面有反向代理，填写其精确来源 IP，允许读取转发后的真实客户端 IP：
+      # TRUSTED_PROXIES: "127.0.0.1"
 
       # 公网部署时固定分享链接前缀（二维码里的地址），本地/局域网不需要：
       # PUBLIC_URL: https://werewolf.example.com

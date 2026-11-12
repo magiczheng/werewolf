@@ -1,5 +1,5 @@
 // 播报面板：战况时间线 + 遗言。倒序展示，最新一条永远在最上面，无需滚动。
-import { el, esc } from '../ui.js';
+import { el } from '../ui.js';
 
 function toneOf(text) {
   if (/获胜|游戏结束/.test(text)) return 'final';
@@ -14,7 +14,7 @@ export function newsPanel(s) {
   const items = [];
 
   // 遗言是线下当场说的，App 不留文字记录，因此播报里只有系统事件
-  const news = (s.news || []).map((n) => ({ text: n.text, tone: toneOf(n.text) }));
+  const news = (s.news || []).map((n) => ({ text: n.text, day: n.day, tone: toneOf(n.text) }));
   const all = [...news, ...items].reverse(); // 最新在前
 
   if (!all.length) {
@@ -30,7 +30,8 @@ export function newsPanel(s) {
   return el('div', { class: 'news-list' }, all.map((n, i) => el('div', {
     class: `news-item ${n.tone}${i === 0 ? ' latest' : ''}`,
   }, [
-    el('span', { class: 'news-dot' }),
-    el('span', { class: 'news-text' }, n.tone === 'words' ? esc(n.text) : esc(n.text)),
+    el('span', { class: 'news-dot', 'aria-hidden': 'true' }),
+    el('span', { class: 'news-meta' }, i === 0 ? '最新' : n.day ? `第 ${n.day} 天` : '准备'),
+    el('span', { class: 'news-text' }, n.text),
   ])));
 }

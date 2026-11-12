@@ -58,7 +58,7 @@ export const app = {
     // 在房间里
     const view = s.gameStarted ? 'game' : 'lobby';
     resetViewState(view);
-    root.innerHTML = '';
+    if (!root.children[0]?.classList.contains(view + '-view')) root.innerHTML = '';
     // 只有游戏页有底部 Tab 栏；toast 需要据此避让，否则会被永久遮住
     document.body.classList.toggle('has-tabbar', view === 'game');
     if (view === 'lobby') renderLobby(root);
@@ -70,7 +70,8 @@ export const app = {
 export function wireConnectionBanner() {
   let wasOffline = false;
   net.on((_s, type) => {
-    if (type === 'disconnect') {
+    if (type === 'sessionExpired') { toast('登录已失效，请重新登录', true);
+    } else if (type === 'disconnect') {
       wasOffline = true;
       document.body.classList.add('offline');
       toast('连接已断开，正在重连…', true);

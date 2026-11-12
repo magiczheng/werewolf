@@ -1,6 +1,6 @@
 // 法官面板：全场身份、夜间操作汇总、投票明细、手动结算。
 import { roleArt } from './roleArt.js';
-import { el, esc } from '../ui.js';
+import { el } from '../ui.js';
 import { PHASE_NAME } from '../constants.js';
 
 // 选中的座位跨重建保留：法官每点一次「判死/复活」都会触发整页重渲染，
@@ -15,7 +15,7 @@ export function judgePanel(s, emit) {
       const isWolf = p.role === 'wolf' || p.role === 'whiteWolfKing';
       return el('tr', { class: p.alive ? '' : 'dead' }, [
         el('td', { class: 'jt-seat' }, p.seat ? `${p.seat}` : '—'),
-        el('td', {}, p.name ? esc(p.name) : '—'),
+        el('td', {}, p.name ? p.name : '—'),
         el('td', {}, p.roleName ? el('div', { class: 'judge-role' }, [roleArt(p.role, { className: 'judge-role-art' }), el('span', { class: 'role-tag ' + (isWolf ? 'wolf' : 'good') }, p.roleName)]) : '—'),
         el('td', {}, p.alive ? el('span', { class: 'alive-tag' }, '存活') : el('span', { class: 'dead-tag' }, '出局')),
         el('td', {}, p.isSheriff ? '🛡' : ''),
@@ -85,6 +85,11 @@ export function judgePanel(s, emit) {
   ];
 
   return el('div', { class: 'col judge-wrap' }, [
+    s.gameStarted && !s.gameOver ? el('div', { class: 'card glass col' }, [
+      el('div', { class: 'panel-title' }, '法官掌控本局节奏'),
+      el('p', { class: 'hint' }, '确认本阶段的操作与播报已完成，再进入下一阶段。'),
+      el('button', { class: 'btn-primary btn-big', type: 'button', click: () => emit('judge', { cmd: 'advance' }) }, '确认并进入下一阶段'),
+    ]) : null,
     el('div', { class: 'card glass judge-panel col' }, [
       el('div', { class: 'panel-title' }, [
         '👨‍⚖️ 法官面板',

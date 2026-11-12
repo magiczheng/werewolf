@@ -1,6 +1,6 @@
 // 座位网格：大厅（可点击入座）与游戏内（存活/出局/翻牌）共用。
 import { roleArt } from './roleArt.js';
-import { el, esc } from '../ui.js';
+import { el } from '../ui.js';
 
 /**
  * @param {Array} players  snapshot 的 players（座位号 1..N）
@@ -10,7 +10,7 @@ import { el, esc } from '../ui.js';
  *   showRole  是否展示已翻牌角色的身份标签
  */
 export function seatGrid(players, opts = {}) {
-  const grid = el('div', { class: 'seat-grid' });
+  const grid = el('div', { class: 'seat-grid' + (players.length > 9 ? ' dense' : '') });
   const me = opts.me;
 
   for (const seat of players) {
@@ -41,14 +41,14 @@ export function seatGrid(players, opts = {}) {
 
     const bits = [
       el('span', { class: 'seat-no' }, String(seat.seat)),
-      seat.isSheriff ? el('span', { class: 'sheriff-mark', title: '警长' }, '🛡') : null,
+      seat.isSheriff ? el('span', { class: 'sheriff-mark', title: '警长', 'aria-label': '警长' }, '♜') : (isMine ? el('span', { class: 'seat-mine-mark' }, '我') : null),
       (opts.showRole && seat.revealed && seat.roleName && roleArt(seat.role, { className: 'seat-role-art' }))
-        || el('span', { class: 'seat-avatar', 'aria-hidden': 'true' }, seat.name.slice(0, 1)),
-      el('span', { class: 'name' }, esc(seat.name)),
+        || el('span', { class: 'seat-avatar', 'aria-hidden': 'true' }, [...seat.name][0]),
+      el('span', { class: 'name' }, seat.name),
     ];
 
     if (seat.alive) {
-      bits.push(el('span', { class: 'dot' + (seat.connected ? '' : ' off'), title: seat.connected ? '在线' : '掉线' }));
+      bits.push(el('span', { class: 'seat-status' }, [el('span', { class: 'dot' + (seat.connected ? '' : ' off'), 'aria-hidden': 'true' }), el('span', {}, seat.connected ? '在线' : '离线')]));
     } else {
       bits.push(el('span', { class: 'seat-dead' }, '出局'));
     }

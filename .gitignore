@@ -10,3 +10,7 @@ data/*
 *.log
 npm-debug.log*
 .DS_Store
+
+# Browser regression artifacts
+playwright-report/
+test-results/

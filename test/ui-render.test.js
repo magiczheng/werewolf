@@ -870,3 +870,20 @@ describe('反复重渲染', () => {
     }
   });
 });
+
+describe('法官流程与女巫用药反馈', () => {
+  test('法官有明确的推进按钮，普通玩家没有', () => {
+    const state = makeState({ judgeMode: true, me: meFor('villager', { isJudge: true, seat: null }) });
+    state.judge = { ...state, players: players(), night: null, voteState: null, sheriffState: null };
+    const root = renderAndAssert('judge-advance-control', state);
+    assert.match(textOf(root), /确认并进入下一阶段/);
+    const normal = renderAndAssert('normal-no-judge-advance', makeState());
+    assert.doesNotMatch(textOf(normal), /确认并进入下一阶段/);
+  });
+  test('法官模式女巫用药后不再提供第二种药水选择器', () => {
+    const root = renderAndAssert('witch-acted-feedback', makeState({ phase: 'nightWitch', judgeMode: true,
+      me: meFor('witch'), private: privateFor({ witch: { healLeft: false, poisonLeft: true, actedTonight: true } }) }));
+    assert.match(textOf(root), /本夜已使用一种药水/);
+    assert.equal(findByClass(root, 'target-grid').length, 0);
+  });
+});
