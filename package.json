@@ -1,6 +1,6 @@
 {
   "name": "werewolf-party",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "description": "网页版狼人杀平台 —— 线下聚会用：发牌、阶段流转、计时、投票与结算",
   "type": "module",
   "main": "server/index.js",

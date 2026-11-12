@@ -211,3 +211,12 @@ test('PK 目标死亡后不能继续投给它，法官不能冒充玩家确认�
   room.phase = 'sheriffPk'; room.sheriffState = { onPodium: new Set([4, 5]), withdrawn: new Set(), votes: new Map(), pkCandidates: [4, 5] };
   assert.match(room.sheriffVote('p1', 4).error, /目标无效/);
 });
+
+test('旧竞选发言存档从初始顺序恢复已知的退水历史', () => {
+  const room = setup(); room.phase = 'sheriffSpeech';
+  room.sheriffState = { onPodium: new Set([2, 3]), withdrawn: new Set([1]), votes: new Map(), pkCandidates: [] };
+  room.phaseState = { candidates: [2, 3], speechOrder: [1, 2, 3], speakerSeat: 2 };
+  const restored = restoreRoom(serializeRoom(room), () => {});
+  assert.equal(restored.sheriffState.onPodium.has(1), true);
+  assert.equal(restored._sheriffVoters().some(p => p.seat === 1), false);
+});

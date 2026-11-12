@@ -153,3 +153,19 @@ test('回到大厅的重复请求仍返回原回执，不会再次重置新对�
   assert.equal((await call(c, 'restart', { _context: original })).ok, true);
   await call(c, 'sync'); assert.equal(c.state.gameId, game);
 });
+
+test('重启恢复旧 PK 存档：合资格玩家已投齐时自动结算，不等待 PK 玩家', async t => {
+  const f = await fixture(t); const { c, code } = await create(f);
+  const room = f.runtime.rooms.get(code);
+  room.sit(c.state.me.playerId, 1);
+  for (let seat = 2; seat <= 9; seat++) { room.addPlayer('legacy' + seat, '玩家' + seat); room.sit('legacy' + seat, seat); }
+  room.start();
+  room.phase = 'votePk'; room.phaseState = { pkCandidates: [1, 2] };
+  room.voteState = { votes: new Map(), pkCandidates: [1, 2] };
+  for (let seat = 3; seat <= 9; seat++) room.voteState.votes.set('legacy' + seat, 0);
+  room.touch(); await f.restart();
+  const restored = f.runtime.rooms.get(code);
+  assert.ok(restored.phase.startsWith('night'));
+  assert.equal(restored.voteHistory.at(-1).kind, '放逐 PK');
+  assert.equal(restored.voteHistory.at(-1).ballots.length, 7);
+});

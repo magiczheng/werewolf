@@ -63,7 +63,12 @@ export function initSocket(server, opts = {}) {
     broadcast(room);
   }
   for (const room of store.load(changed)) {
-    if (Date.now() - room.lastActive <= ROOM_IDLE_TTL) rooms.set(room.code, room);
+    if (Date.now() - room.lastActive <= ROOM_IDLE_TTL) {
+      rooms.set(room.code, room);
+      // Older releases waited for PK candidates too. Re-evaluate committed ballots
+      // after registration so an already-complete PK cannot wait forever on restart.
+      if (room.phase === 'votePk' && room._allVoted()) database.transaction(() => room._maybeComplete())();
+    }
     else store.remove(room.code);
   }
   function detach(socket, { remove = false } = {}) {

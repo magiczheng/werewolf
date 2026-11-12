@@ -35,6 +35,10 @@ export function restoreRoom(json, onChange, { disconnected = true } = {}) {
   }
   room.receipts = new Map(d.receipts || []);
   room.sheriffState = d.sheriffState && { ...d.sheriffState, onPodium: new Set(d.sheriffState.onPodium), withdrawn: new Set(d.sheriffState.withdrawn), votes: new Map(d.sheriffState.votes) };
+  // Older speech snapshots still retain the initial order, so recover known candidacies.
+  if (room.sheriffState && room.phase === PHASE.SHERIFF_SPEECH) {
+    for (const seat of room.phaseState.speechOrder || []) room.sheriffState.onPodium.add(seat);
+  }
   room.voteState = d.voteState && { ...d.voteState, votes: new Map(d.voteState.votes) };
   return room;
 }
