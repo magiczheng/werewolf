@@ -415,3 +415,5 @@ button[aria-busy=true]::before { content: ''; display: inline-block; width: 12px
 .board-action-controls > button { width: 100%; min-height: 44px; }
 .btn-primary[aria-busy=true]::before { content: none; }
 .game-board .seat.dead.activity-speaking { opacity: 1; }
+.game-board > .role-card { margin: 0; padding: 18px; box-shadow: none; }
+.game-board > .role-card .identity-art { max-height: 140px; }

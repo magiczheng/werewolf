@@ -106,6 +106,13 @@ test('九人真实页面：发牌、第一夜、退水顺序及投票记录', as
     }
     await host.getByRole('button', { name: '开始游戏', exact: true }).click();
     for (const p of players) { await expect(p.page.locator('.role-card .identity-art')).toBeVisible(); p.role = await p.page.locator('.role-card .rc-name').innerText(); }
+    const identityBeforeConfirm = await host.evaluate(() => {
+      const card = document.querySelector('.role-card').getBoundingClientRect();
+      const button = [...document.querySelectorAll('button')].find(n => n.textContent === '我已记住身份').getBoundingClientRect();
+      return card.bottom <= button.top;
+    });
+    expect(identityBeforeConfirm).toBe(true);
+    await expect(host.getByRole('button', { name: '我已记住身份', exact: true })).toBeInViewport();
     for (const [index, p] of players.entries()) {
       await p.page.getByRole('button', { name: '我已记住身份', exact: true }).click();
       if (index === 0) {

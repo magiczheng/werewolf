@@ -524,6 +524,7 @@ export function renderGame(root) {
   } : null;
   const selection = selections.find(item => item.label === boardMode) || selections.filter(item => !item.danger).at(-1) || speechSelection;
   // Keep the primary decisions next to the seats, without a second target grid.
+  const identityCard = actionNodes.find(node => node.classList.contains('role-card')) || null;
   const quickButtons = [];
   const collectButtons = node => {
     for (const child of [...node.children]) {
@@ -533,6 +534,7 @@ export function renderGame(root) {
     }
   };
   const informationNodes = actionNodes.filter(node => {
+    if (node === identityCard) return false;
     if (node.tagName === 'BUTTON') { quickButtons.push(node); return false; }
     if (!node.classList.contains('blast-box') && !node.classList.contains('gameover')) collectButtons(node);
     return true;
@@ -560,14 +562,16 @@ export function renderGame(root) {
   if (previousRecords) records.open = previousRecords.open || (s.voteHistory?.length || 0) > (previousRecords._rounds || 0);
   records._rounds = s.voteHistory?.length || 0;
   const board = el('section', { class: 'card glass col game-board', 'aria-label': '对局座位图' }, [
-    el('div', { class: 'board-heading' }, [el('h2', {}, '全场座位'), el('span', { class: 'pill' }, me.seat ? `${me.seat}号位 · 我` : '法官席')]),
+    el('div', { class: 'board-heading' }, [el('h2', {}, identityCard ? '先确认你的身份' : '全场座位'), el('span', { class: 'pill' }, me.seat ? `${me.seat}号位 · 我` : '法官席')]),
+    identityCard,
+    identityCard && quickButtons.length ? el('div', { class: 'board-action-controls col' }, quickButtons) : null,
     el('div', { class: 'round-progress', role: 'status', 'aria-live': 'polite' }, [
       el('strong', {}, progress), el('span', { class: 'pending-seats' }, wait),
     ]),
     selection ? el('p', { class: 'board-selection-hint' }, `${selection.label}：点击亮起的座位选择目标`) : null,
     selection?.danger ? el('button', { class: 'link-btn', type: 'button', click: () => { boardMode = ''; renderGame(root); } }, '取消特殊操作选择') : null,
     seatGrid(s.players, { me, showRole: true, activity, selection }),
-    quickButtons.length ? el('div', { class: 'board-action-controls col' }, quickButtons) : null,
+    !identityCard && quickButtons.length ? el('div', { class: 'board-action-controls col' }, quickButtons) : null,
     el('div', { class: 'board-tools' }, [
       el('button', { class: 'btn-ghost', type: 'button', 'aria-label': '投票记录', click: () => {
         const target = root.querySelector?.('.replay-panel');
