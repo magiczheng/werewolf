@@ -86,6 +86,7 @@ test('Service Worker 更新使用网络中的样式，不继续展示旧缓存',
 });
 
 test('九人真实页面：发牌、第一夜、退水顺序及投票记录', async ({ browser, baseURL }, testInfo) => {
+  test.setTimeout(120000); // WebKit needs more time to run nine isolated browser contexts in CI.
   const contexts = []; const players = [];
   try {
     for (let i = 1; i <= 9; i++) {
@@ -200,5 +201,31 @@ test('减少动态效果偏好下取消入场和循环动效', async ({ page }) 
   await page.goto('/');
   await expect(page.locator('.auth-view')).toBeVisible();
   expect(await page.locator('.auth-view').evaluate(node => getComputedStyle(node).animationName)).toBe('none');
+  await noOverflow(page);
+});
+
+// A page can avoid overflow and still shrink its cards to an unusably narrow column.
+test('手机大厅铺满屏幕，九个座位在底部操作区上方完整可见', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name === 'desktop', '仅检查手机断点');
+  await register(page); await createRoom(page);
+  for (const viewport of [{ width: 390, height: 844 }, { width: 375, height: 812 }, { width: 430, height: 932 }]) {
+    await page.setViewportSize(viewport);
+    const geometry = await page.evaluate(() => {
+      const rect = selector => document.querySelector(selector).getBoundingClientRect();
+      const view = rect('.lobby-view'), card = rect('.seats-card'), head = rect('.lobby-head');
+      const seats = document.querySelectorAll('.seat-grid .seat');
+      const last = seats[seats.length - 1].getBoundingClientRect();
+      const dock = rect('.lobby-launch');
+      return { viewWidth: view.width, cardWidth: card.width, headWidth: head.width, lastBottom: last.bottom, dockTop: dock.top };
+    });
+    expect(Math.abs(geometry.viewWidth - geometry.cardWidth)).toBeLessThan(2);
+    expect(Math.abs(geometry.viewWidth - geometry.headWidth)).toBeLessThan(2);
+    expect(geometry.lastBottom).toBeLessThan(geometry.dockTop);
+    await expect(page.locator('.lobby-invite')).toBeInViewport();
+    await noOverflow(page);
+  }
+  await page.getByRole('button', { name: '1号座位，点击入座', exact: true }).click();
+  await expect(page.locator('.seat.mine .name')).toHaveText('本局昵称');
+  await expect(page.getByRole('button', { name: '离开座位', exact: true })).toBeVisible();
   await noOverflow(page);
 });

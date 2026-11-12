@@ -211,7 +211,7 @@ export function confirmDialog(title, body, opts = {}) {
   return new Promise(resolve => {
     const root = document.getElementById('modal-root');
     if (!root) return resolve(false);
-    const previousFocus = document.activeElement;
+    const previousFocus = opts.returnFocus || document.activeElement;
     const titleId = `dialog-title-${++dialogSequence}`;
     let settled = false;
     const close = value => {

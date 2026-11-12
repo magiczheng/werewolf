@@ -7,6 +7,7 @@ export default defineConfig({
   use: { baseURL: 'http://127.0.0.1:3199', trace: 'retain-on-failure', screenshot: 'only-on-failure' },
   projects: [
     { name: 'desktop', use: { browserName: 'chromium', viewport: { width: 1280, height: 900 } } },
+    { name: 'mobile-safari', use: { browserName: 'webkit', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
     { name: 'mobile', use: { browserName: 'chromium', viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true } },
   ],
   webServer: { command: 'node test/browser/serve.mjs', url: 'http://127.0.0.1:3199/api/health', reuseExistingServer: false, timeout: 20000 },

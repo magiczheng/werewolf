@@ -39,17 +39,10 @@ export function renderLobby(root) {
     el('div', { class: 'seating-progress', role: 'progressbar', 'aria-label': '入座进度', 'aria-valuenow': occupied, 'aria-valuemin': 0, 'aria-valuemax': s.settings.playerCount }, el('span', { style: `width:${occupied / s.settings.playerCount * 100}%` })),
     el('p', { class: 'hint seating-intro' }, me?.seat ? `你已坐在 ${me.seat} 号，等待朋友入座。` : '每个人都需要选座，角色将在开局后随机分配。'),
     seats,
-    el('div', { class: 'hint' }, empty
-      ? (me && !me.seat
-        ? `还有 ${empty} 个空位，点一个坐下`
-        : `还有 ${empty} 个空位，等人入座`)
-      : '座位已满，等待开始'),
-    me && me.seat
-      ? el('div', { class: 'hint' }, '想换座位：直接点别的空位即可；也可以先离开座位')
-      : null,
-    me && me.seat
-      ? el('button', { class: 'btn-ghost', type: 'button', click: standUp }, '离开座位')
-      : null,
+    el('div', { class: 'seating-footer' }, [
+      el('p', { class: 'hint' }, empty ? `还有 ${empty} 个空位 · ${me?.seat ? '点击空位即可换座' : '选择一个喜欢的位置'}` : '全员已入座，准备开始'),
+      me?.seat ? el('button', { class: 'link-btn', type: 'button', click: standUp }, '离开座位') : null,
+    ]),
     s.waiting.length ? el('div', { class: 'waiting-block' }, [
       el('div', { class: 'hint' }, '已加入，等待选座'),
       el('div', { class: 'waiting-row' }, s.waiting.map((w) => el('span', { class: 'waiting-chip' }, w.name))),
@@ -76,8 +69,8 @@ export function renderLobby(root) {
     const ok = await copyText(shareUrl);
     toast(ok ? '邀请链接已复制' : '请长按上方地址复制');
   };
-  const leaveRoom = async () => {
-    const yes = await confirmDialog('离开房间？', '退出后需要重新输入房间号才能回来。', { confirmText: '离开' });
+  const leaveRoom = async (event) => {
+    const yes = await confirmDialog('离开房间？', '退出后需要重新输入房间号才能回来。', { confirmText: '离开', returnFocus: event?.currentTarget });
     if (!yes) return;
     try {
       await net.emit('leaveRoom');
@@ -109,10 +102,11 @@ export function renderLobby(root) {
 
   const parts = [
     el('div', { class: 'lobby-head' }, [
-      el('div', { class: 'panel-title', style: 'margin:0' }, '狼人杀 / 房间大厅'),
+      el('div', { class: 'lobby-brand' }, [el('span', { class: 'lobby-moon', 'aria-hidden': 'true' }, '☾'), el('span', {}, '月夜俱乐部')]),
+      el('button', { class: 'lobby-code', type: 'button', click: copyLink, 'aria-label': `复制房间 ${code} 的邀请链接` }, [el('span', {}, '房间'), el('strong', {}, code)]),
       el('button', { class: 'link-btn', type: 'button', click: leaveRoom }, '退出'),
     ]),
-    pageIntro('BEFORE THE MOONRISE', '好故事，等人齐。', '邀请朋友加入，选好座位，准备迎接第一个夜晚。'),
+    pageIntro('BEFORE THE MOONRISE', '好故事，等人齐。', '选个座位，邀请朋友，共赴今晚的月夜。'),
     seatCard,
     shareCard,
   ];
@@ -121,9 +115,10 @@ export function renderLobby(root) {
   const permitted = !!(me?.isHost || me?.isJudge);
   const canStart = !!(permitted && s.canStart && !s.canStart.error);
   const startLabel = !permitted ? '等待房主开始游戏' : canStart ? '开始游戏' : ((s.canStart && s.canStart.error) || '开始游戏');
-  parts.push(el('div', { class: 'lobby-launch' }, [
-    el('div', { class: 'launch-caption' }, [el('span', { class: 'launch-status-dot' + (canStart ? ' ready' : '') }), el('span', {}, canStart ? '所有席位已就绪' : `已入座 ${occupied} / ${s.settings.playerCount} · ${empty ? '等待朋友加入' : '准备开始'}`)]),
+  parts.push(el('div', { class: 'lobby-launch' + (canStart ? ' is-ready' : ' is-waiting') }, [
+    el('div', { class: 'launch-caption' }, [el('span', { class: 'launch-status-dot' + (canStart ? ' ready' : '') }), el('span', {}, canStart ? '所有席位已就绪' : `已入座 ${occupied} / ${s.settings.playerCount}`), el('span', { class: 'launch-detail' }, empty ? `还差 ${empty} 位朋友` : '等待房主开局')]),
     el('button', { class: 'btn-primary btn-big sticky-cta', type: 'button', disabled: !canStart, click: startGame }, startLabel),
+    !canStart ? el('button', { class: 'btn-primary lobby-invite', type: 'button', click: copyLink }, '邀请朋友') : null,
   ]));
 
   // ---------- 本局配置（只读）----------

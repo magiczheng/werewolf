@@ -200,7 +200,7 @@ describe('换座与离开座位', () => {
 
   test('已入座的人能看到「离开座位」按钮', () => {
     const root = renderAndAssert('swap-standup', lobbyState({ seat: 1 }));
-    const labels = findByClass(root, 'btn-ghost').map(textOf).join(' | ');
+    const labels = findByClass(root, 'link-btn').map(textOf).join(' | ');
     assert.match(labels, /离开座位/, '应有离开座位的入口');
   });
 

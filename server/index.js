@@ -80,7 +80,8 @@ let stopping = false;
 function shutdown(reason, error) {
   if (stopping) return;
   stopping = true;
-  console.error(JSON.stringify({ level: error ? 'error' : 'info', event: reason, message: error?.message }));
+  const log = error ? console.error : console.log;
+  log(JSON.stringify({ level: error ? 'error' : 'info', event: reason, message: error?.message }));
   const exitCode = error ? 1 : 0;
   setTimeout(() => process.exit(exitCode), 5000).unref();
   runtime.io.close(() => { db.close(); process.exit(exitCode); });
