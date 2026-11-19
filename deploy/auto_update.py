@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Poll one public GitHub workflow; deploy verified GHCR images with rollback.
+"""Poll one public GitHub workflow; build or import an image and deploy with rollback.
 No repository token or server SSH key is sent to GitHub. Python standard library only.
 """
 import argparse
@@ -266,7 +266,52 @@ class Deployer:
                 blob.unlink()
         log('deployment_succeeded', version=image['version'], revision=release['revision'])
 
-    def run(self, dry_run=False):
+    def build_source(self, revision, archive_path=None):
+        if not SHA.fullmatch(revision):
+            raise ValueError('Invalid source revision')
+        with tempfile.TemporaryDirectory(prefix='source-', dir=self.root) as work:
+            directory = Path(work)
+            if archive_path is None:
+                archive_path = directory / 'source.tar.gz'
+                url = f'https://codeload.github.com/{REPO}/tar.gz/{revision}'
+                with request(url, timeout=60) as response, archive_path.open('wb') as output:
+                    shutil.copyfileobj(response, output)
+            with tarfile.open(archive_path) as archive:
+                archive.extractall(directory, filter='data')
+            context = directory / f'werewolf-{revision}'
+            version = json.loads((context / 'package.json').read_text())['version']
+            if not VERSION.fullmatch(version):
+                raise ValueError('Invalid source version')
+            image = f'werewolf-local:sha-{revision}'
+            log('local_build_started', revision=revision, version=version)
+            subprocess.run(['docker', 'build', '--tag', image,
+                            '--build-arg', 'http_proxy', '--build-arg', 'no_proxy',
+                            '--build-arg', f'VCS_REF={revision}',
+                            '--build-arg', f'BUILD_DATE={datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}',
+                            '--label', f'org.opencontainers.image.revision={revision}',
+                            '--label', f'org.opencontainers.image.version={version}', str(context)],
+                           check=True, timeout=900)
+        image_id = self.command(['docker', 'image', 'inspect', image, '--format', '{{.Id}}'])
+        log('local_build_succeeded', image=image, image_id=image_id)
+        return {'image': image, 'version': version, 'image_id': image_id,
+                'manifest': None, 'blobs': []}
+
+    def smoke_test(self, image, revision):
+        container = self.command(['docker', 'run', '-d', '--network', 'none', image['image']])
+        code = ('const base="http://127.0.0.1:3000/api/";'
+                'for(let i=0;i<15;i++){try{'
+                'const health=await (await fetch(base+"health")).json();'
+                'const version=await (await fetch(base+"version")).json();'
+                'if(health.ok && version.revision===process.argv[1] && version.version===process.argv[2])process.exit(0);'
+                '}catch{} await new Promise(resolve=>setTimeout(resolve,1000));}process.exit(1);')
+        try:
+            self.command(['docker', 'exec', container, 'node', '--input-type=module',
+                          '-e', code, revision, image['version']], timeout=25)
+        finally:
+            self.command(['docker', 'rm', '-f', container])
+        log('local_image_verified', revision=revision, version=image['version'])
+
+    def run(self, dry_run=False, build_from_source=False):
         with request(f'https://api.github.com/repos/{REPO}/actions/workflows/{WORKFLOW}/runs?branch=main&event=push&per_page=1',
                      {'Accept': 'application/vnd.github+json'}) as response:
             runs = json.load(response)['workflow_runs']
@@ -276,6 +321,11 @@ class Deployer:
             return
         log('release_available', **release)
         if dry_run:
+            return
+        if build_from_source:
+            image = self.build_source(release['revision'])
+            self.smoke_test(image, release['revision'])
+            self.activate(release, image)
             return
         registry = Registry(self.cache)
         with tempfile.TemporaryDirectory(prefix='import-', dir=self.cache) as work:
@@ -291,6 +341,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--root', default='/opt/werewolf')
     parser.add_argument('--dry-run', action='store_true')
+    parser.add_argument('--build-from-source', action='store_true')
+    parser.add_argument('--verify-current-source', type=Path, metavar='ARCHIVE')
     args = parser.parse_args()
     deployer = Deployer(args.root)
     with (deployer.root / 'deploy.lock').open('a') as lock:
@@ -300,7 +352,12 @@ def main():
             log('already_running')
             return
         try:
-            deployer.run(args.dry_run)
+            if args.verify_current_source:
+                revision = deployer.read_state()['revision']
+                image = deployer.build_source(revision, args.verify_current_source)
+                deployer.smoke_test(image, revision)
+            else:
+                deployer.run(args.dry_run, args.build_from_source)
         except Exception as error:
             log('update_failed', error=str(error))
             raise SystemExit(1)

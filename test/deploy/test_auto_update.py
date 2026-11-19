@@ -1,4 +1,5 @@
 import gzip
+import io
 import hashlib
 import importlib.util
 import json
@@ -120,6 +121,19 @@ class DeploymentTests(unittest.TestCase):
         self.assertEqual(state['previous_image'], 'old-image')
         self.deployer.backup.assert_called_once()
         self.deployer.check_health.assert_called_once_with(SHA)
+
+    def test_local_build_checks_image_before_touching_production(self):
+        payload = json.dumps({'workflow_runs': [run()]}).encode()
+        self.deployer.build_source = Mock(return_value=self.image)
+        self.deployer.smoke_test = Mock(side_effect=ValueError('bad local image'))
+        with patch.object(m, 'request', return_value=io.BytesIO(payload)), patch.object(m, 'Registry') as registry:
+            with self.assertRaisesRegex(ValueError, 'bad local image'):
+                self.deployer.run(build_from_source=True)
+            registry.assert_not_called()
+        self.deployer.build_source.assert_called_once_with(SHA)
+        self.deployer.smoke_test.assert_called_once_with(self.image, SHA)
+        self.deployer.backup.assert_not_called()
+        self.assertEqual((self.root / '.env').read_text(), self.old_env)
 
     def test_backup_failure_never_changes_running_app(self):
         self.deployer.backup.side_effect = RuntimeError('backup failed')

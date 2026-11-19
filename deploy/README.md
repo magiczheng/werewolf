@@ -19,7 +19,11 @@ npm run version:check
 
 `werewolf-update.timer` 每两分钟运行一次检查，首次在启动一分钟后运行。它只读取公开仓库 `magiczheng/werewolf` 的 `docker.yml` 工作流、main 分支、push 事件的最新运行，必须已结束且整体成功。失败、进行中、PR、tag、已部署或回滚过的运行不会触发切换。一次请求/两分钟以控制公开 GitHub API 请求量。
 
-处理流程：
+在服务的启动命令后加上 `--build-from-source`，更新器会下载通过 CI 的完整提交对应的源码，在服务器上构建 `werewolf-local:sha-完整提交号`，并在独立容器验证健康状态与版本后再部署。该模式使用 Docker 本地构建缓存，生产服务器无需下载 GHCR 应用镜像。构建和部署共用一把锁。基础镜像或依赖变化时，构建仍需要访问相应的软件源。
+
+可在不切换生产容器的情况下验证当前版本的源码构建。用对应提交执行 `git archive --format=tar.gz --prefix="werewolf-完整提交号/" 完整提交号` 生成归档，上传后运行 `python3 /opt/werewolf/deploy/auto_update.py --verify-current-source 归档路径`。
+
+不带 `--build-from-source` 时使用以下镜像下载流程：
 
 1. 根据完整提交 SHA 取得 GHCR 镜像，验证平台、镜像元数据、所有压缩层与解压层摘要。网络断开时分段重试并复用缓存。
 2. 在临时目录生成 Docker 导入归档并导入镜像，核对最终 image ID。此时旧应用继续运行。
