@@ -42,7 +42,7 @@ export function firstGameGuide() {
     el('div', { class: 'spread' }, [el('div', { class: 'panel-title' }, '第一次来？三步开启月夜'),
       el('button', { class: 'link-btn', type: 'button', click: () => { store.set('ww_guide_seen', '1'); card.remove(); toast('引导已收起，随时可以选择座位'); } }, '我知道了')]),
     el('div', { class: 'guide-steps' }, [['01', '邀请入座'], ['02', '确认身份'], ['03', '闭眼行动']].map(([number, text]) => el('div', { class: 'guide-step' }, [el('span', {}, number), el('span', {}, text)]))),
-    el('p', { class: 'hint' }, '白天面对面讨论；选择目标立即提交，白天投票不可修改。'),
+    el('p', { class: 'hint' }, '白天面对面讨论。投票和用毒需要确认，白天投票提交后不可修改。'),
   ]);
   return card;
 }

@@ -508,3 +508,114 @@ body.multi-account .unified-game .game-topbar { padding-top: 8px; }
 .unified-game .seat.dead:not(.activity-speaking) .seat-activity,
 .unified-game .seat:has(.idiot-tag) .role-tag { display: none; }
 .unified-game .seat.dead .role-tag::after { content: ' · 出局'; }
+
+/* 牌桌使用日夜两套光色。座位、操作和工具共用同一张桌面。 */
+.unified-game {
+  --table-gold: #ead2a0;
+  --table-line: #b7ccb326;
+  --table-felt: #172923;
+  max-width: 1080px;
+  gap: 10px;
+}
+.unified-game .game-topbar {
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  gap: 11px;
+  padding: 10px 13px;
+  border-color: #c1ab744d;
+  border-radius: 16px;
+  background: linear-gradient(90deg, #26362b 16%, #25352be8 44%, #25342c48),
+    url('../images/moonlit-forest.svg') right 42% / 72% auto no-repeat, #25342c;
+}
+.unified-game .game-topbar.stage-night {
+  border-color: #9aadc24d;
+  background: linear-gradient(90deg, #1b2b36 16%, #1b2b36eb 44%, #18222d40),
+    url('../images/moonlit-forest.svg') right 32% / 72% auto no-repeat, #1b2b36;
+}
+.stage-emblem {
+  width: 40px; height: 40px; display: grid; place-items: center;
+  color: var(--table-gold); background: #a7894e24; border: 1px solid #cdb47844; border-radius: 12px;
+}
+.stage-night .stage-emblem { color: #d3e2ff; border-color: #a9bfd04a; background: #879fbc25; }
+.unified-game .gt-phase { font-size: clamp(19px, 4vw, 24px); line-height: 1.14; color: #f4e8ce; letter-spacing: .035em; }
+.unified-game .gt-day { font-size: 11px; color: #c4cfb9; letter-spacing: .035em; }
+.unified-game .peek-btn { min-height: 44px; border-color: #d5ddc847; background: #14231ede; }
+.unified-game .game-board {
+  padding: 11px;
+  border-color: var(--table-line);
+  background: radial-gradient(ellipse at 50% 5%, #244237 0%, var(--table-felt) 68%, #15251f 100%);
+  box-shadow: inset 0 0 0 1px #12241b80, 0 14px 32px #020b073c;
+}
+.unified-game .board-heading { padding: 1px 2px; }
+.unified-game .board-heading h2 { display: flex; align-items: center; gap: 7px; color: #edf1e5; font-size: 14px; }
+.board-heading .line-icon { width: 14px; height: 14px; color: #a5c5ac; }
+.unified-game .board-heading .pill { color: var(--table-gold); border-color: #cfb98444; background: #c4a46612; }
+.unified-game .round-progress {
+  padding: 5px 9px; border: 1px solid #93b49b24; border-radius: 9px;
+  background: #0c1e1699;
+}
+.round-meter { display: flex; align-items: center; gap: 10px; }
+.round-meter strong { flex-shrink: 0; font-variant-numeric: tabular-nums; }
+.round-track { flex: 1; max-width: 145px; height: 4px; background: #a9c5a029; border-radius: 999px; overflow: hidden; }
+.round-track > span { display: block; height: 100%; background: linear-gradient(90deg, #94bfa1, #dbcb94); border-radius: inherit; transition: width 200ms ease-out; }
+.unified-game .pending-seats { color: #bdceb9; }
+.unified-game .game-board .seat-grid .seat {
+  border-radius: 13px; border-color: #afc4ae31;
+  background: linear-gradient(155deg, #2d443b, #1d2f29 80%);
+  box-shadow: inset 0 1px #c0dcc410;
+  transition: background 160ms, border-color 160ms, box-shadow 160ms;
+}
+.unified-game .game-board .seat-no { font-family: var(--font-num); font-size: clamp(17px, 5vw, 26px); font-weight: 650; color: #f1e5c7; }
+.unified-game .game-board .seat .name { color: #eff3e8; font-weight: 550; }
+.unified-game .game-board .seat-activity { color: #e1c38a; }
+.unified-game .game-board .activity-done .seat-activity { color: #b8dbc1; }
+.unified-game .game-board .activity-excluded .seat-activity { color: #b9c0b6; }
+.unified-game .game-board .seat.selectable { border-color: #c8a96870; background: linear-gradient(155deg, #394938, #25382e 78%); }
+.unified-game .game-board .seat.mine { border-color: #d9b777; box-shadow: inset 0 0 0 1px #e4c49134, inset 0 0 22px #c5a36314; }
+.unified-game .game-board .seat.activity-speaking,
+.unified-game .game-board .seat.selected { border-color: #f1ce86; background: linear-gradient(155deg, #5b5237, #364636); box-shadow: inset 0 0 0 1px #f7d58b50, 0 0 12px #e3bf4922; }
+.unified-game .game-board .seat-status .dot { box-shadow: 0 0 0 2px #adcfab22; }
+.unified-game .game-board .seat-status .dot.off { box-shadow: none; }
+.unified-game .game-board .seat:focus-visible { outline-offset: -4px; }
+.board-sidebar { display: flex; flex-direction: column; gap: 6px; flex: 0 0 auto; min-width: 0; }
+.unified-game .action-dock { padding: 5px 7px; border: 1px solid #b4cead29; border-radius: 10px; background: #0c1e1677; }
+.unified-game .action-status { color: #f4dca8; }
+.unified-game .board-action-controls > .btn-primary { border-radius: 9px; background: linear-gradient(125deg, #ead5a2, #cfad69); color: #212417; }
+.unified-game .board-tools { border: 0; padding: 0; }
+.unified-game .board-tools > button {
+  display: flex; align-items: center; justify-content: center; gap: 5px;
+  color: #dbe5d5; background: #1b3028; border: 1px solid #b3c9ad30; border-radius: 10px;
+}
+.unified-game .board-tools > .voice-toggle.on { color: #f2d69e; border-color: #caa46760; background: #343826; }
+.board-tools .line-icon { width: 14px; height: 14px; }
+.tool-badge { display: grid; place-items: center; min-width: 14px; min-height: 14px; padding: 0 3px; background: #e2be741c; border-radius: 5px; color: #f0d49c; font-size: 9px; }
+.unified-game .game-board > .role-card {
+  background: radial-gradient(ellipse at 50% 14%, #34483c, #152620 75%);
+  border-color: #c8ac7540;
+}
+.unified-game .game-board > .role-card .identity-art { max-height: min(235px, 30dvh); }
+@media (min-width: 860px) {
+  .unified-game { padding-top: calc(20px + var(--safe-top)); padding-bottom: calc(20px + var(--safe-bottom)); gap: 14px; }
+  .unified-game .game-topbar { min-height: 78px; }
+  .unified-game .game-main { align-items: stretch; }
+  .unified-game .game-board { display: grid; grid-template: auto auto minmax(0, 1fr) / minmax(0, 1fr) minmax(205px, 28%); gap: 12px; padding: 16px; }
+  .unified-game .board-heading, .unified-game .round-progress { grid-column: 1 / -1; }
+  .unified-game .seat-grid, .unified-game .game-board > .role-card { grid-area: 3 / 1; }
+  .board-sidebar { grid-area: 3 / 2; padding: 10px; gap: 10px; border-radius: 12px; background: #11241ebb; border: 1px solid var(--table-line); }
+  .unified-game .action-dock { padding: 10px; background: #20372d; }
+  .unified-game .board-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .unified-game .board-tools > button { width: 100%; }
+}
+@media (max-height: 650px) {
+  .unified-game .game-topbar { padding: 6px 10px; }
+  .stage-emblem { width: 35px; height: 35px; }
+  .unified-game .game-board { padding: 8px; }
+  .unified-game .game-board .seat-no { font-size: 17px; }
+  .unified-game .game-board .seat-grid .seat { padding: 3px; gap: 1px; }
+}
+@media (max-width: 375px) {
+  .unified-game .board-tools > button { gap: 3px; }
+  .board-tools .line-icon { width: 12px; height: 12px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .round-track > span, .unified-game .game-board .seat-grid .seat { transition: none; }
+}

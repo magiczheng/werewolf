@@ -211,7 +211,12 @@ function actionsPanel(s) {
           aliveTargets.filter((t) => t.seat !== me.seat && !me.wolfTeammates.includes(t.seat)),
           '',
           (seat) => emit('nightAction', { type: 'wolfKill', target: seat }),
-          { selected: priv.wolfVote || 0 },
+          {
+            selected: priv.wolfVote || 0,
+            confirmPick: (seat, returnFocus) => confirmDialog('确认狼队投票？',
+              `选择 ${seat}号。全员投票且达到多数后，本阶段会自动结束。`,
+              { danger: false, confirmText: '确认投票', returnFocus }),
+          },
         ));
 
         section('狼人投票 · 选择今晚杀害的目标', body);
@@ -248,6 +253,9 @@ function actionsPanel(s) {
           body.appendChild(targetPicker(
             aliveTargets.filter((t) => t.seat !== me.seat), '',
             (seat) => emit('nightAction', { type: 'witchAct', kind: 'poison', target: seat }),
+            { confirmPick: (seat, returnFocus) => confirmDialog('确认使用毒药？',
+              `对 ${seat}号使用毒药后不可撤销，本夜也不能再用解药。`,
+              { confirmText: '确认用毒', returnFocus }) },
           ));
         } else {
           body.appendChild(el('div', { class: 'hint muted' }, '毒药已用完'));
@@ -537,7 +545,7 @@ function compactStatus(s, selection, information) {
   if (s.phase === 'nightWolves' && s.me.isWolf) text = `狼人已选 ${p.wolfConfirmed || '0/0'} · 过半需 ${p.wolfNeed || '?'} 票${p.wolfRevote ? ' · 请重新选择' : ''}`;
   if (s.phase === 'nightWitch' && s.me.role === 'witch' && s.me.alive) {
     const w = p.witch || {};
-    text = w.actedTonight ? '本夜已使用药水，等待推进' : `${w.killTarget ? `今夜 ${w.killTarget}号被刀` : '今夜无人被刀'} · ${w.poisonLeft ? '点座位用毒' : '毒药已用尽'}`;
+    text = w.actedTonight ? '本夜已使用药水，等待推进' : `${w.killTarget ? `今夜 ${w.killTarget}号被刀` : '今夜无人被刀'} · ${w.poisonLeft ? '点座位选择用毒目标' : '毒药已用尽'}`;
   }
   if (s.phase === 'dayTalk') text = s.phaseState.speakerSeat ? `${s.phaseState.speakerSeat}号正在发言` : '自由讨论中 · 房主可点座位标记发言者';
   if (s.gameOver) text = s.gameOver.winners === 'wolf' ? '本局结束 · 狼人阵营获胜' : '本局结束 · 好人阵营获胜';
@@ -616,37 +624,51 @@ export function renderGame(root) {
     : activity.total && activity.completed >= activity.total ? (s.judgeMode ? '已完成操作，等待法官推进' : '已完成，正在进入下一阶段') : s.judgeMode ? '等待法官确认推进' : activity.label;
   const oldView = root.children[0];
   const sameView = oldView?.classList.contains('game-view');
-  const topbar = el('div', { class: 'game-topbar glass' }, [
+  const atNight = isNightPhase(phase);
+  const topbar = el('header', { class: 'game-topbar glass' + (atNight ? ' stage-night' : '') }, [
+    el('span', { class: 'stage-emblem' }, icon(atNight ? 'moon' : 'sun')),
     el('div', { class: 'gt-left' }, [
-      el('span', { class: 'gt-phase' }, PHASE_NAME[phase] || phase),
-      el('span', { class: 'gt-day' }, `${s.day ? `第 ${s.day} 天` : '开局准备'} · ${s.players.filter(p => p.name && p.alive).length} 人存活${s.sheriff ? ` · 警长 ${s.sheriff}号` : ''}`),
+      el('h1', { class: 'gt-phase' }, PHASE_NAME[phase] || phase),
+      el('span', { class: 'gt-day' }, `${s.day ? `第 ${s.day} ${atNight ? '夜' : '天'}` : '开局准备'} · ${s.players.filter(p => p.name && p.alive).length} 人存活${s.sheriff ? ` · 警长 ${s.sheriff}号` : ''}`),
     ]),
     !isJudge && (phase !== 'roleReveal' || priv.roleReady) ? peekButton(s) : null,
   ]);
   const records = replayPanel(s);
   records.open = true;
-  const sheetButton = (id, name, label = name) => el('button', { class: 'btn-ghost', type: 'button', 'aria-label': name, 'data-opensheet': id,
-    click: event => toggleSheet(root, id, event.currentTarget) }, label);
+  const sheetButton = (id, name, glyph, label, badge) => el('button', {
+    class: 'btn-ghost', type: 'button', 'aria-label': name, 'data-opensheet': id,
+    click: event => toggleSheet(root, id, event.currentTarget),
+  }, [icon(glyph), el('span', {}, label), badge ? el('span', { class: 'tool-badge' }, badge) : null]);
   const grid = seatGrid(s.players, { me, showRole: true, activity, selection });
   grid.style.gridTemplateRows = `repeat(${Math.ceil(s.players.length / (s.players.length > 9 ? 4 : 3))}, minmax(0, 1fr))`;
   // 身份确认阶段用身份牌占据座位区域，确认后立即恢复整张座位图。
   if (identityCard) grid.hidden = true;
   const board = el('section', { class: 'card glass game-board' + (identityCard ? ' revealing' : ''), 'aria-label': '对局座位图' }, [
-    el('div', { class: 'board-heading' }, [el('h2', {}, identityCard ? '确认你的身份' : '全场座位'), el('span', { class: 'pill' }, me.seat ? `${me.seat}号位 · 我` : '法官席')]),
+    el('div', { class: 'board-heading' }, [
+      el('h2', {}, [icon('board'), identityCard ? '我的身份牌' : '全场座位']),
+      el('span', { class: 'pill' }, me.seat ? `${me.seat}号位 · 我` : '法官席'),
+    ]),
     el('div', { class: 'round-progress', role: 'status', 'aria-live': 'polite' }, [
-      el('strong', {}, progress), el('span', { class: 'pending-seats', title: wait }, wait),
+      el('div', { class: 'round-meter' }, [
+        el('strong', {}, progress),
+        activity.total ? el('span', { class: 'round-track', 'aria-hidden': 'true' },
+          el('span', { style: `width:${Math.min(100, 100 * activity.completed / activity.total)}%` })) : null,
+      ]),
+      wait !== progress ? el('span', { class: 'pending-seats', title: wait }, wait) : null,
     ]),
     identityCard, grid,
-    el('div', { class: 'action-dock' }, [
-      compactStatus(s, selection, informationNodes),
-      selection?.danger ? el('button', { class: 'link-btn', type: 'button', click: () => { boardMode = ''; renderGame(root); } }, '取消特殊操作选择') : null,
-      !selection?.danger && quickButtons.length ? el('div', { class: 'board-action-controls' }, quickButtons) : null,
-    ]),
-    el('nav', { class: 'board-tools', 'aria-label': '对局工具' }, [
-      sheetButton('records', '投票记录', `票型 · ${s.voteHistory?.length || 0}`),
-      sheetButton('news', '播报记录', '播报'),
-      sheetButton('details', '阶段详情与更多操作', priv.canBlast ? '更多 · 特殊操作' : s.offlinePlayers?.length ? `更多 · ${s.offlinePlayers.length}离线` : '更多'),
-      voiceSupported() && isNarrator(s) ? voiceToggle(s) : null,
+    el('div', { class: 'board-sidebar' }, [
+      el('div', { class: 'action-dock' }, [
+        compactStatus(s, selection, informationNodes),
+        selection?.danger ? el('button', { class: 'link-btn', type: 'button', click: () => { boardMode = ''; renderGame(root); } }, '取消特殊操作选择') : null,
+        !selection?.danger && quickButtons.length ? el('div', { class: 'board-action-controls' }, quickButtons) : null,
+      ]),
+      el('nav', { class: 'board-tools', 'aria-label': '对局工具' }, [
+        sheetButton('records', '投票记录', 'records', '票型', s.voteHistory?.length),
+        sheetButton('news', '播报记录', 'news', '播报'),
+        sheetButton('details', '阶段详情与更多操作', 'more', '更多', priv.canBlast ? '!' : s.offlinePlayers?.length),
+        voiceSupported() && isNarrator(s) ? voiceToggle(s) : null,
+      ]),
     ]),
   ]);
   const controls = roomControls(s); controls.open = true;
@@ -694,7 +716,9 @@ export function renderGame(root) {
 function voiceToggle(s) {
   const paint = (btn) => {
     const on = voiceOn();
-    btn.textContent = on ? '🔊 朗读中' : '🔇 已静音';
+    btn.replaceChildren(icon(on ? 'volume' : 'mute'), el('span', {}, on ? '朗读中' : '已静音'));
+    btn.setAttribute('aria-label', '语音播报');
+    btn.setAttribute('aria-pressed', String(on));
     btn.classList.toggle('on', on);
     btn.title = on
       ? `本机正在朗读播报（音色：${voiceName()}）· 点击静音`

@@ -23,7 +23,10 @@ export function targetPicker(targets, hint, onPick, opts = {}) {
     if (emptyButton) emptyButton.disabled = true;
     listener({ selected, submitting });
     try {
-      if (opts.confirm && !await confirmDialog('确认投票？', seat ? `投给 ${seat}号，提交后不可修改。` : '本轮弃票，提交后不可修改。', { danger: false, confirmText: '确认投票', returnFocus })) {
+      const confirmed = opts.confirmPick
+        ? await opts.confirmPick(seat, returnFocus)
+        : !opts.confirm || await confirmDialog('确认投票？', seat ? `投给 ${seat}号，提交后不可修改。` : '本轮弃票，提交后不可修改。', { danger: false, confirmText: '确认投票', returnFocus });
+      if (!confirmed) {
         selected = previous; return { cancelled: true };
       }
       const result = await action();

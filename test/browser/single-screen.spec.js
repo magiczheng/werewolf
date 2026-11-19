@@ -82,6 +82,13 @@ test('9、12、16 人在手机可用视口内完整展示，记录浮层不撑�
   await page.keyboard.press('Escape');
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('button', { name: '投票记录', exact: true })).toBeFocused();
+  await page.evaluate(() => {
+    const notice = document.createElement('div');
+    notice.className = 'update-notice';
+    notice.textContent = '新版本已就绪';
+    document.body.append(notice);
+  });
+  await expect(page.locator('.update-notice')).toBeHidden();
   await fits(page);
   await page.getByRole('button', { name: '投票记录', exact: true }).click();
   longSnapshot.phaseId += '-next';

@@ -17,6 +17,8 @@
 .update-notice { position: fixed; left: 50%; transform: translateX(-50%); bottom: calc(var(--tabbar-total) + 25px); z-index: 55; width: min(90vw, 430px); padding: 14px 16px; background: #223326; border: 1px solid #c9ad7360; border-radius: 12px; display: flex; align-items: center; gap: 15px; box-shadow: var(--shadow-lg); font-size: 12px; }
 .update-notice span { flex: 1; }
 .update-notice button { min-height: 32px; padding: 6px 12px; font-size: 11px; }
+/* 更新提示等玩家回到大厅再显示，避免挡住单屏对局的操作。 */
+#app:has(.game-view) ~ .update-notice { display: none; }
 body.offline .game-topbar::after { content: '连接已断开，恢复后再操作'; position: absolute; top: 100%; left: 0; right: 0; background: #4b3527; color: #ecd3a5; padding: 5px 12px; text-align: center; font-size: 11px; }
 @media (max-width: 720px) { .room-controls, .quick-guide { width: 100%; } .lobby-view > .room-controls { order: 4; } }
 body.offline .target-chip { opacity: .55; }

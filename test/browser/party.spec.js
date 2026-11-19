@@ -127,10 +127,20 @@ test('九人真实页面：发牌、第一夜、退水顺序及投票记录', as
     await expect(host.locator('.seat-grid')).toHaveCount(1);
     const target = players.find(p => p.role === '村民'); const wolves = players.filter(p => p.role === '狼人');
     await target.page.locator('.seat-grid').evaluate(node => node.dataset.preserved = 'yes');
-    await wolves[0].page.locator(`.game-board .seat.selectable[data-seat="${target.seat}"]`).click();
-    await expect(target.page.locator('.seat-grid')).toHaveAttribute('data-preserved', 'yes');
-    for (const p of wolves.slice(1)) await p.page.locator(`.game-board .seat.selectable[data-seat="${target.seat}"]`).click();
+    for (const [index, p] of wolves.entries()) {
+      await p.page.locator(`.game-board .seat.selectable[data-seat="${target.seat}"]`).click();
+      await p.page.getByRole('button', { name: '确认投票', exact: true }).click();
+      if (index === 0) await expect(target.page.locator('.seat-grid')).toHaveAttribute('data-preserved', 'yes');
+    }
     const witch = players.find(p => p.role === '女巫').page;
+    const poisonTarget = witch.locator('.game-board .seat.selectable').first();
+    const poisonSeat = await poisonTarget.getAttribute('data-seat');
+    await poisonTarget.click();
+    const poisonDialog = witch.getByRole('dialog', { name: '确认使用毒药？' });
+    await expect(poisonDialog).toContainText(`对 ${poisonSeat}号使用毒药`);
+    await expect(poisonDialog.getByRole('button', { name: '确认用毒', exact: true })).toBeVisible();
+    await poisonDialog.getByRole('button', { name: '取消', exact: true }).click();
+    await expect(poisonTarget).toBeEnabled();
     await witch.getByRole('button', { name: `使用解药救 ${target.seat}号`, exact: true }).click();
     const seer = players.find(p => p.role === '预言家').page;
     await seer.locator(`.game-board .seat.selectable[data-seat="${wolves[0].seat}"]`).click();
