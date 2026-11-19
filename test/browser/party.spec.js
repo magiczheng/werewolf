@@ -164,6 +164,7 @@ test('九人真实页面：发牌、第一夜、退水顺序及投票记录', as
     await expect(host.locator('.gt-phase')).toContainText('白天发言');
     await host.getByRole('button', { name: '投票记录', exact: true }).click();
     await expect(host.locator('.vote-record').filter({ hasText: '警长投票' })).toBeVisible();
+    await host.getByRole('button', { name: '关闭', exact: true }).click();
     await host.locator('.game-board .seat.selectable[data-seat="4"]').click();
     await expect(players[4].page.locator('.game-board .seat[data-seat="4"] .seat-activity')).toHaveText('正在发言');
     await players[3].page.getByRole('button', { name: '结束我的发言', exact: true }).click();
@@ -184,6 +185,7 @@ test('九人真实页面：发牌、第一夜、退水顺序及投票记录', as
       await p.page.locator('.game-board .seat.selectable[data-seat="8"]').click();
       await p.page.getByRole('button', { name: '确认投票', exact: true }).click();
     }
+    await host.getByRole('button', { name: '投票记录', exact: true }).click();
     await expect(host.locator('.vote-record').filter({ hasText: '放逐 PK' })).toBeVisible();
     await noOverflow(host);
   } finally { for (const context of contexts) await context.close(); }

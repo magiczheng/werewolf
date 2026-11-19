@@ -13,7 +13,7 @@ import { peekButton, hidePeek } from '../components/rolePeek.js';
 import { newsPanel } from '../components/news.js';
 import { judgePanel } from '../components/judgePanel.js';
 import {
-  speakNew, resetVoice, isNarrator, unlock as unlockVoice,
+  speakNew, isNarrator, unlock as unlockVoice,
   enabled as voiceOn, setEnabled as setVoice,
   supported as voiceSupported, voiceName,
 } from '../speech.js';
@@ -23,6 +23,8 @@ import {
 let boardMode = '';
 let lastPhase = '';
 let lastStage = '';
+let activeSheet = '';
+let sheetReturnFocus = null;
 
 const emit = async (event, payload) => {
   try {
@@ -40,6 +42,8 @@ const emit = async (event, payload) => {
 
 export function resetGameView() {
   boardMode = '';
+  activeSheet = '';
+  sheetReturnFocus = null;
   lastPhase = '';
   lastStage = '';
   // 浮层挂在 body 上，不随 #app 重建而消失，离开游戏页时必须主动收起
@@ -64,7 +68,7 @@ function actionsPanel(s) {
   const me = s.me;
   const priv = s.private || {};
   const phase = s.phase;
-  if (me.isJudge) return [el('p', { class: 'hint' }, '法官可在座位图旁推进阶段，详细信息与手动干预在下方。')];
+  if (me.isJudge) return [el('p', { class: 'hint' }, '在座位图下方推进阶段，详细信息与手动干预在更多面板。')];
   const aliveTargets = s.players.filter((p) => p.name && p.alive);
   const out = [];
 
@@ -474,7 +478,7 @@ function gameOverCard(s) {
   return el('div', { class: 'card glass gameover ' + (isWolf ? 'wolf' : 'good') }, [
     roleArt(isWolf ? 'wolf' : 'villager', { className: 'victory-role-art', full: true }),
     el('div', { class: 'go-camp' }, isWolf ? '狼人阵营获胜' : '好人阵营获胜'),
-    el('div', { class: 'hint' }, '下方座位已揭示所有身份'),
+    el('div', { class: 'hint' }, '座位图已揭示所有身份'),
     s.me.isHost
       ? el('button', {
         class: 'btn-primary btn-big', type: 'button',
@@ -483,6 +487,68 @@ function gameOverCard(s) {
       : el('div', { class: 'hint' }, '等待房主回到房间开启下一局'),
     el('div', { class: 'hint' }, '回到房间后座位会清空，大家重新选座'),
     el('button', { class: 'btn-ghost btn-big', type: 'button', click: leaveRoom }, '退出房间'),
+  ]);
+}
+
+// 详细信息只在浮层内滚动，主屏始终保留座位图与当前操作。
+function toggleSheet(root, id = '', trigger) {
+  const previousSheet = activeSheet;
+  activeSheet = id;
+  if (trigger) sheetReturnFocus = trigger;
+  for (const mask of root.querySelectorAll('.game-sheet-mask')) mask.hidden = mask.dataset.sheet !== id;
+  for (const node of root.querySelectorAll('.game-topbar, .game-board')) {
+    if (id) node.setAttribute('inert', '');
+    else node.removeAttribute('inert');
+  }
+  if (id) root.querySelector(`.game-sheet-mask[data-sheet="${id}"] .sheet-close`)?.focus({ preventScroll: true });
+  else {
+    const returnTo = sheetReturnFocus?.isConnected ? sheetReturnFocus : root.querySelector(`button[data-opensheet="${previousSheet}"]`);
+    returnTo?.focus({ preventScroll: true });
+    sheetReturnFocus = null;
+  }
+}
+
+function gameSheet(root, id, title, content) {
+  const close = () => toggleSheet(root);
+  const panel = el('section', { class: 'game-sheet glass', role: 'dialog', 'aria-modal': 'true', 'aria-label': title }, [
+    el('header', { class: 'sheet-heading' }, [el('h2', {}, title), el('button', { class: 'btn-ghost sheet-close', type: 'button', click: close }, '关闭')]),
+    el('div', { class: 'sheet-content col' }, content),
+  ]);
+  const mask = el('div', { class: 'game-sheet-mask', 'data-sheet': id, hidden: activeSheet !== id,
+    click: event => { if (event.target === mask) close(); },
+    keydown: event => {
+      if (document.body.classList.contains('modal-open')) return;
+      if (event.key === 'Escape') { event.preventDefault(); close(); }
+      if (event.key !== 'Tab') return;
+      const buttons = [...panel.querySelectorAll('button, input, select, textarea, a[href], [tabindex="0"]')].filter(node => !node.disabled && node.getClientRects().length);
+      const first = buttons[0], last = buttons.at(-1);
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last?.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+    },
+  }, panel);
+  return mask;
+}
+
+function compactStatus(s, selection, information) {
+  const p = s.private || {};
+  let text = information.map(node => node.querySelector?.('.voted-lock, .wait-text, .hint')?.textContent).filter(Boolean).at(-1) || '等待其他玩家操作';
+  if (selection) text = `${selection.label} · 点击亮起的座位`;
+  if (s.phase === 'roleReveal') text = p.roleReady ? '身份已确认，等待其他人' : '记住身份后，点击下方确认';
+  if (s.phase === 'nightWolves' && s.me.isWolf) text = `狼人已选 ${p.wolfConfirmed || '0/0'} · 过半需 ${p.wolfNeed || '?'} 票${p.wolfRevote ? ' · 请重新选择' : ''}`;
+  if (s.phase === 'nightWitch' && s.me.role === 'witch' && s.me.alive) {
+    const w = p.witch || {};
+    text = w.actedTonight ? '本夜已使用药水，等待推进' : `${w.killTarget ? `今夜 ${w.killTarget}号被刀` : '今夜无人被刀'} · ${w.poisonLeft ? '点座位用毒' : '毒药已用尽'}`;
+  }
+  if (s.phase === 'dayTalk') text = s.phaseState.speakerSeat ? `${s.phaseState.speakerSeat}号正在发言` : '自由讨论中 · 房主可点座位标记发言者';
+  if (s.gameOver) text = s.gameOver.winners === 'wolf' ? '本局结束 · 狼人阵营获胜' : '本局结束 · 好人阵营获胜';
+  const seerResult = information.map(node => node.querySelector?.('.seer-result')).find(Boolean);
+  seerResult?.remove();
+  for (const node of information) for (const speaker of node.querySelectorAll?.('.speaker-seat') || []) speaker.className = 'speaker-detail-seat';
+  return el('section', { class: 'game-actions compact-actions', 'aria-label': '本阶段操作', 'aria-live': 'polite' }, [
+    el('p', { class: 'action-status' }, text),
+    s.phase === 'sheriffSpeech' ? el('div', { class: 'speaker-line' }, [el('span', { class: 'speaker-seat' }, `${s.phaseState.speakerSeat}号`), '正在发言']) : null,
+    seerResult || null,
+    s.phase === 'nightWolves' && s.me.isWolf && p.wolfTally?.length ? el('div', { class: 'wolf-tally' }, p.wolfTally.map(([seat, n]) => el('span', { class: 'wolf-tally-item' }, `${seat}号 ${n}票`))) : null,
   ]);
 }
 
@@ -496,6 +562,7 @@ export function renderGame(root) {
   const changed = phase !== lastPhase || (!!s.phaseId && s.phaseId !== lastStage);
   if (changed) {
     lastPhase = phase; lastStage = s.phaseId || phase; boardMode = '';
+    activeSheet = ''; sheetReturnFocus = null;
     dismissDialog(); hidePeek(); window.scrollTo(0, 0);
   }
   const isJudge = !!(me.isJudge && s.judge?.players);
@@ -514,8 +581,7 @@ export function renderGame(root) {
     selection.useBoard();
     selections.push(selection);
     picker.appendChild(el('button', { class: 'btn-ghost picker-mode', type: 'button', click: () => {
-      boardMode = selection.label; renderGame(root);
-      root.querySelector?.('.game-board')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+      boardMode = selection.label; activeSheet = ''; renderGame(root);
     } }, `在座位图选择 · ${selection.label}`));
   }
   const speechSelection = phase === 'dayTalk' && (me.isHost || isJudge) ? {
@@ -536,7 +602,7 @@ export function renderGame(root) {
   const informationNodes = actionNodes.filter(node => {
     if (node === identityCard) return false;
     if (node.tagName === 'BUTTON') { quickButtons.push(node); return false; }
-    if (!node.classList.contains('blast-box') && !node.classList.contains('gameover')) collectButtons(node);
+    if (!node.classList.contains('blast-box')) collectButtons(node);
     return true;
   });
   if (isJudge) {
@@ -558,42 +624,40 @@ export function renderGame(root) {
     !isJudge && (phase !== 'roleReveal' || priv.roleReady) ? peekButton(s) : null,
   ]);
   const records = replayPanel(s);
-  const previousRecords = sameView ? oldView.querySelector?.('.replay-panel') : null;
-  if (previousRecords) records.open = previousRecords.open || (s.voteHistory?.length || 0) > (previousRecords._rounds || 0);
-  records._rounds = s.voteHistory?.length || 0;
-  const board = el('section', { class: 'card glass col game-board', 'aria-label': '对局座位图' }, [
-    el('div', { class: 'board-heading' }, [el('h2', {}, identityCard ? '先确认你的身份' : '全场座位'), el('span', { class: 'pill' }, me.seat ? `${me.seat}号位 · 我` : '法官席')]),
-    identityCard,
-    identityCard && quickButtons.length ? el('div', { class: 'board-action-controls col' }, quickButtons) : null,
+  records.open = true;
+  const sheetButton = (id, name, label = name) => el('button', { class: 'btn-ghost', type: 'button', 'aria-label': name, 'data-opensheet': id,
+    click: event => toggleSheet(root, id, event.currentTarget) }, label);
+  const grid = seatGrid(s.players, { me, showRole: true, activity, selection });
+  grid.style.gridTemplateRows = `repeat(${Math.ceil(s.players.length / (s.players.length > 9 ? 4 : 3))}, minmax(0, 1fr))`;
+  // 身份确认阶段用身份牌占据座位区域，确认后立即恢复整张座位图。
+  if (identityCard) grid.hidden = true;
+  const board = el('section', { class: 'card glass game-board' + (identityCard ? ' revealing' : ''), 'aria-label': '对局座位图' }, [
+    el('div', { class: 'board-heading' }, [el('h2', {}, identityCard ? '确认你的身份' : '全场座位'), el('span', { class: 'pill' }, me.seat ? `${me.seat}号位 · 我` : '法官席')]),
     el('div', { class: 'round-progress', role: 'status', 'aria-live': 'polite' }, [
-      el('strong', {}, progress), el('span', { class: 'pending-seats' }, wait),
+      el('strong', {}, progress), el('span', { class: 'pending-seats', title: wait }, wait),
     ]),
-    selection ? el('p', { class: 'board-selection-hint' }, `${selection.label}：点击亮起的座位选择目标`) : null,
-    selection?.danger ? el('button', { class: 'link-btn', type: 'button', click: () => { boardMode = ''; renderGame(root); } }, '取消特殊操作选择') : null,
-    seatGrid(s.players, { me, showRole: true, activity, selection }),
-    !identityCard && quickButtons.length ? el('div', { class: 'board-action-controls col' }, quickButtons) : null,
-    el('div', { class: 'board-tools' }, [
-      el('button', { class: 'btn-ghost', type: 'button', 'aria-label': '投票记录', click: () => {
-        const target = root.querySelector?.('.replay-panel');
-        if (target) { target.open = true; target.scrollIntoView?.({ behavior: 'smooth', block: 'start' }); }
-      } }, `投票记录 · ${s.voteHistory?.length || 0}轮`),
+    identityCard, grid,
+    el('div', { class: 'action-dock' }, [
+      compactStatus(s, selection, informationNodes),
+      selection?.danger ? el('button', { class: 'link-btn', type: 'button', click: () => { boardMode = ''; renderGame(root); } }, '取消特殊操作选择') : null,
+      !selection?.danger && quickButtons.length ? el('div', { class: 'board-action-controls' }, quickButtons) : null,
+    ]),
+    el('nav', { class: 'board-tools', 'aria-label': '对局工具' }, [
+      sheetButton('records', '投票记录', `票型 · ${s.voteHistory?.length || 0}`),
+      sheetButton('news', '播报记录', '播报'),
+      sheetButton('details', '阶段详情与更多操作', priv.canBlast ? '更多 · 特殊操作' : s.offlinePlayers?.length ? `更多 · ${s.offlinePlayers.length}离线` : '更多'),
       voiceSupported() && isNarrator(s) ? voiceToggle(s) : null,
     ]),
-    s.news?.length ? el('p', { class: 'board-latest' }, `最新：${s.news.at(-1).text}`) : null,
   ]);
-  const news = el('details', { class: 'card glass public-news' }, [
-    el('summary', {}, '播报与阶段记录'), newsPanel(s),
-    isNarrator(s) && !voiceSupported() ? el('p', { class: 'hint' }, '当前浏览器不支持语音，请用 Safari / Chrome 打开') : null,
-  ]);
-  const previousNews = sameView ? oldView.querySelector?.('.public-news') : null;
-  if (previousNews) news.open = previousNews.open;
+  const controls = roomControls(s); controls.open = true;
   const sections = [
-    ['board', board, JSON.stringify([s.players, activity, priv, phase, selection?.label, selection?.selected, selection?.targets, me.seat])],
-    ['records', records, JSON.stringify([s.voteHistory, s.replay, s.gameOver])],
-    ['actions', el('section', { class: 'col game-actions', 'aria-label': '本阶段操作' }, informationNodes), JSON.stringify([phase, s.phaseId, me, priv, s.roleConfirm, s.gameOver, s.phaseState])],
-    ['news', news, JSON.stringify(s.news)],
-    ['judge', judgeNode, JSON.stringify(s.judge)],
-    ['controls', roomControls(s), JSON.stringify([s.host, s.offlinePlayers, s.hostCandidates, s.canClaimHost])],
+    ['board', board, JSON.stringify([s.players, activity, priv, phase, s.phaseId, s.news, s.gameOver, s.voteHistory?.length, selection?.label, selection?.selected, selection?.targets, me])],
+    ['records', gameSheet(root, 'records', s.gameOver ? '本局复盘与票型' : '投票记录', records), JSON.stringify([s.voteHistory, s.replay, s.gameOver])],
+    ['news', gameSheet(root, 'news', '播报与阶段记录', newsPanel(s)), JSON.stringify(s.news)],
+    ['details', gameSheet(root, 'details', '阶段详情与更多操作', [
+      el('section', { class: 'col game-details' }, informationNodes),
+      judgeNode, controls,
+    ]), JSON.stringify([phase, s.phaseId, me, priv, s.roleConfirm, s.gameOver, s.phaseState, s.judge, s.host, s.offlinePlayers, s.hostCandidates, s.canClaimHost])],
   ];
   const oldMain = sameView ? oldView.querySelector?.('.game-main') : null;
   let main;
@@ -601,7 +665,12 @@ export function renderGame(root) {
     for (const [id, node, key] of sections) {
       const previous = [...oldMain.children].find(item => item.dataset.section === id);
       node.dataset.section = id; node._renderKey = key;
-      if (previous && previous._renderKey !== key) previous.replaceWith(node);
+      if (previous && previous._renderKey !== key) {
+        const scrollTop = previous.querySelector?.('.sheet-content')?.scrollTop || 0;
+        previous.replaceWith(node);
+        const content = node.querySelector?.('.sheet-content');
+        if (content) content.scrollTop = scrollTop;
+      }
       else if (!previous) oldMain.appendChild(node);
     }
     main = oldMain;
@@ -611,6 +680,13 @@ export function renderGame(root) {
     root.innerHTML = '';
     root.appendChild(el('div', { class: 'view game-view unified-game view-enter' }, [topbar, main]));
   }
+  // 状态推送更新浮层内容，但不自动打开票型或打断正在进行的操作。
+  if (activeSheet && !document.body.classList.contains('modal-open')) {
+    const focused = document.activeElement;
+    toggleSheet(root, activeSheet);
+    if (focused?.isConnected && focused.closest?.('.game-sheet')) focused.focus({ preventScroll: true });
+  }
+  if (!activeSheet) toggleSheet(root);
   speakNew(s, s.news);
 }
 

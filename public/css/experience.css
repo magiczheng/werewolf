@@ -417,3 +417,94 @@ button[aria-busy=true]::before { content: ''; display: inline-block; width: 12px
 .game-board .seat.dead.activity-speaking { opacity: 1; }
 .game-board > .role-card { margin: 0; padding: 18px; box-shadow: none; }
 .game-board > .role-card .identity-art { max-height: 140px; }
+
+/* 对局主屏固定在可用视口；长记录只在独立浮层内滚动。 */
+.unified-game {
+  height: 100vh; height: 100dvh; min-height: 0;
+  max-width: 780px; padding: calc(10px + var(--safe-top)) 0 calc(10px + var(--safe-bottom));
+  gap: 8px; overflow: hidden;
+}
+.unified-game .game-topbar {
+  position: relative; flex: 0 0 auto; margin: 0; padding: 8px 12px;
+  border: 1px solid var(--glass-brd); border-radius: 12px; gap: 8px;
+}
+.unified-game .gt-phase { font-size: 16px; }
+.unified-game .gt-day { font-size: 10px; margin-top: 1px; }
+.unified-game .game-main { display: flex; flex: 1; min-height: 0; }
+.unified-game .game-board {
+  display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0;
+  width: 100%; padding: 12px; gap: 8px; border-radius: 16px; margin: 0;
+}
+.unified-game .board-heading { flex-shrink: 0; }
+.unified-game .board-heading h2 { font-size: 13px; }
+.unified-game .board-heading .pill { font-size: 10px; padding: 3px 8px; }
+.unified-game .round-progress { flex-shrink: 0; padding: 5px 9px; gap: 1px; }
+.unified-game .pending-seats { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.unified-game .seat-grid { flex: 1; min-height: 0; gap: 7px; align-content: stretch; }
+.unified-game .game-board .seat-grid .seat {
+  min-height: 0; padding: 7px 4px; gap: 3px; justify-content: center;
+  border-radius: 10px; overflow: hidden; transform: none;
+}
+.unified-game .game-board .seat-no { position: static; font-size: 19px; line-height: 1.1; color: #e1d4b2; }
+.unified-game .game-board .seat-avatar, .unified-game .seat-pick-hint { display: none; }
+.unified-game .game-board .seat .name { font-size: 11px; max-width: 100%; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.unified-game .game-board .seat-status { position: absolute; top: 8px; left: 8px; }
+.unified-game .game-board .seat-status > span:not(.dot) { display: none; }
+.unified-game .game-board .seat-status:has(.off)::after { content: '离线'; font-size: 8px; }
+.unified-game .game-board .seat-activity { font-size: 10px; line-height: 1.2; }
+.unified-game .game-board .seat-role-art { position: absolute; top: 5px; left: 5px; width: 22px; height: 22px; }
+.unified-game .game-board .role-tag, .unified-game .game-board .idiot-tag, .unified-game .game-board .seat-dead { font-size: 9px; padding: 0 3px; line-height: 1.3; }
+.action-dock { flex-shrink: 0; display: flex; flex-direction: column; gap: 7px; padding-top: 8px; border-top: 1px solid var(--glass-brd); }
+.unified-game .compact-actions { display: flex; flex-direction: column; gap: 3px; }
+.action-status { font-size: 12px; color: #dfc893; line-height: 1.5; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.unified-game .compact-actions .seer-result { padding: 3px 9px; font-size: 12px; }
+.unified-game .compact-actions .speaker-line { margin: 0; font-size: 11px; }
+.unified-game .compact-actions .speaker-seat { font-size: 14px; }
+.unified-game .compact-actions .wolf-tally { gap: 4px; }
+.unified-game .compact-actions .wolf-tally-item { font-size: 10px; padding: 2px 6px; }
+.unified-game .board-action-controls { display: flex; gap: 7px; }
+.unified-game .board-action-controls > button { flex: 1; width: auto; min-width: 0; min-height: 44px; padding: 8px; font-size: 12px; }
+.unified-game .board-tools { flex-shrink: 0; display: flex; gap: 5px; padding-top: 7px; border-top: 1px solid var(--glass-brd); }
+.unified-game .board-tools > button { flex: 1; min-width: 0; min-height: 44px; font-size: 11px; padding: 6px 3px; white-space: nowrap; border-radius: 8px; }
+.unified-game .board-tools > .voice-toggle { font-size: 10px; }
+.unified-game .game-board > .role-card {
+  flex: 1; min-height: 0; display: flex; flex-direction: column; justify-content: center; align-items: center;
+  padding: 10px; gap: 5px; overflow: auto; border-radius: 12px;
+}
+.unified-game .game-board > .role-card .identity-art { max-height: min(140px, 22dvh); width: auto; margin: 0; flex-shrink: 1; min-height: 40px; }
+.unified-game .role-card .rc-name { font-size: 24px; margin: 0; }
+.unified-game .role-card .rc-kicker, .unified-game .role-card .rc-camp { font-size: 10px; margin: 0; }
+.unified-game .role-card .rc-desc { font-size: 11px; line-height: 1.5; margin: 0; }
+.unified-game .role-card .rc-extras { padding-top: 6px; margin-top: 0; gap: 3px; width: 100%; }
+.unified-game .role-card .rc-extra { font-size: 11px; }
+body.multi-account .unified-game { padding-top: calc(28px + var(--safe-top)); }
+body.multi-account .unified-game .game-topbar { padding-top: 8px; }
+.game-sheet-mask { position: fixed; inset: 0; z-index: 50; background: #06110ccc; backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px); display: flex; align-items: center; justify-content: center; padding: 16px; }
+.game-sheet { width: min(100%, 620px); max-height: calc(100dvh - 32px - var(--safe-top) - var(--safe-bottom)); display: flex; flex-direction: column; border-radius: 18px; border: 1px solid #c9ad7340; overflow: hidden; box-shadow: 0 20px 80px #0008; }
+.sheet-heading { display: flex; align-items: center; justify-content: space-between; flex-shrink: 0; padding: 12px 16px; border-bottom: 1px solid var(--glass-brd); }
+.sheet-heading h2 { font-size: 16px; color: #e1d4b2; }
+.sheet-close { min-height: 44px; padding: 8px 16px; }
+.sheet-content { padding: 16px; overflow-y: auto; min-height: 0; overscroll-behavior: contain; -webkit-overflow-scrolling: touch; gap: 14px; }
+.sheet-content .card { padding: 14px; box-shadow: none; }
+.sheet-content .replay-panel { border: 0; padding: 0; background: transparent; }
+.sheet-content .replay-panel > summary { display: none; }
+.sheet-content .blast-box { order: -1; }
+@media (max-width: 720px) {
+ .game-sheet-mask { align-items: flex-end; padding: calc(12px + var(--safe-top)) 8px calc(8px + var(--safe-bottom)); }
+ .game-sheet { max-height: calc(100dvh - 24px - var(--safe-top) - var(--safe-bottom)); }
+}
+@media (max-height: 650px) {
+ .unified-game { gap: 5px; padding-top: calc(5px + var(--safe-top)); padding-bottom: calc(5px + var(--safe-bottom)); }
+ .unified-game .game-board { padding: 8px; gap: 5px; }
+ .unified-game .game-topbar { padding: 5px 10px; }
+ .unified-game .seat-grid { gap: 5px; }
+ .unified-game .game-board .seat-grid .seat { padding: 4px 3px; gap: 2px; }
+ .unified-game .game-board .seat-no { font-size: 16px; }
+ .unified-game .game-board .seat .name { font-size: 10px; }
+ .unified-game .game-board .seat-activity { font-size: 9px; }
+ .unified-game .action-dock { gap: 4px; padding-top: 5px; }
+}
+.unified-game .seat.dead:has(.role-tag) .seat-dead,
+.unified-game .seat.dead:not(.activity-speaking) .seat-activity,
+.unified-game .seat:has(.idiot-tag) .role-tag { display: none; }
+.unified-game .seat.dead .role-tag::after { content: ' · 出局'; }

@@ -59,8 +59,6 @@ export const app = {
     const view = s.gameStarted ? 'game' : 'lobby';
     resetViewState(view);
     if (!root.children[0]?.classList.contains(view + '-view')) root.innerHTML = '';
-    // 只有游戏页有底部 Tab 栏；toast 需要据此避让，否则会被永久遮住
-    document.body.classList.toggle('has-tabbar', view === 'game');
     if (view === 'lobby') renderLobby(root);
     else renderGame(root);
   },
