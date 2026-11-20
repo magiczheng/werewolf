@@ -604,6 +604,9 @@ body.multi-account .unified-game .game-topbar { padding-top: 8px; }
   .unified-game .action-dock { padding: 10px; background: #20372d; }
   .unified-game .board-tools { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .unified-game .board-tools > button { width: 100%; }
+  .unified-game .game-board.revealing { display: flex; }
+  .revealing .board-sidebar { padding: 0; border: 0; background: none; }
+  .unified-game .revealing .board-tools { display: flex; }
 }
 @media (max-height: 650px) {
   .unified-game .game-topbar { padding: 6px 10px; }
