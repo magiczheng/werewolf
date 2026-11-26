@@ -80,19 +80,9 @@ button { transition: background .18s, border-color .18s, transform .15s, box-sha
 .switch::after { width: 18px; height: 18px; background: #c8cec1; }
 .switch.on::after { transform: translateX(16px); background: #f4ecd9; }
 
-/* 大厅：邀请卡与选座区并排，信息不再挤成一列。 */
-.lobby-view { display: grid; grid-template-columns: 300px minmax(0, 1fr); gap: 22px; align-content: start; align-items: start; }
-.lobby-head { grid-column: 1 / -1; padding-bottom: 16px; border-bottom: 1px solid var(--glass-brd); }
-.lobby-head .panel-title { font-size: 13px; letter-spacing: .1em; color: #c7ccb9; }
-.lobby-view > .page-intro { grid-column: 1 / -1; padding: 10px 0 14px; }
-.share-box { grid-column: 1; grid-row: 3 / 5; gap: 20px; padding: 24px; }
-.share-box > .spread { flex-wrap: wrap; gap: 8px; }
 .qr { width: 170px; height: 170px; border-radius: 8px; padding: 12px; margin-top: 6px; }
 .room-code { color: #e3cca0; background: none; font-size: 33px; letter-spacing: .14em; font-weight: 500; }
 .share-link { background: #101e17; font-size: 10px; }
-.seats-card { grid-column: 2; grid-row: 3; }
-.lobby-view > .sticky-cta { grid-column: 2; position: static; }
-.lobby-config { grid-column: 1 / -1; }
 .cfg-chip { padding: 7px 12px; border-radius: 6px; font-size: 12px; }
 .cfg-chip.muted-chip { color: #a0ad9b; border-style: solid; border-color: #b2c3a917; }
 .seat-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
@@ -178,20 +168,10 @@ button { transition: background .18s, border-color .18s, transform .15s, box-sha
  .stepper-ctrl { gap: 0; }
  .step-btn { width: 25px; }
  .stepper-val { min-width: 20px; }
- .lobby-view { display: flex; }
- .lobby-head { padding-bottom: 12px; }
- .lobby-view > .page-intro { padding: 4px 0 8px; }
- .share-box { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 10px 18px; text-align: left; padding: 20px; }
- .share-box > .spread { grid-column: 1 / -1; }
- .share-box .qr { grid-column: 1; grid-row: 2 / 5; width: 100px; height: 100px; margin: 0; padding: 7px; }
  .room-code { text-align: left; font-size: 26px; align-self: end; }
  .share-link { padding: 5px 7px; font-size: 9px; }
- .share-box > .row { grid-column: 2; }
- .share-box .btn-ghost { padding: 6px 8px; min-height: 34px; font-size: 11px; }
- .share-box .judge-row { grid-column: 1 / -1; }
  .card { padding: 20px; }
  .seat { min-height: 116px; }
- .lobby-view > .sticky-cta { position: sticky; bottom: calc(12px + var(--safe-bottom)); order: 5; box-shadow: 0 8px 28px #00000070; }
  .cfg-locked { font-size: 10px; }
  .game-view { padding-bottom: calc(var(--tabbar-total) + 36px); }
  .game-topbar { margin: -20px -18px 0; padding: 17px 18px; padding-top: calc(17px + var(--safe-top)); }

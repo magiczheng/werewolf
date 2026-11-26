@@ -483,7 +483,6 @@ select.input { appearance: none; background-image: none; cursor: pointer; }
 
 .lobby-head { display: flex; align-items: center; justify-content: space-between; padding: 2px 2px 0; }
 
-.share-box { text-align: center; gap: 12px; }
 .qr {
   width: 176px; height: 176px;
   margin: 0 auto;

@@ -229,7 +229,9 @@ describe('大厅', () => {
     const root = renderAndAssert('lobby', snap);
     const t = textOf(root);
     assert.match(t, /ABC123/, '应显示房间号');
-    assert.match(t, /座位/, '应显示座位区');
+    assert.equal(findByClass(root, 'lobby-table').length, 1, '应显示独立的座位区');
+    assert.equal(findByClass(root, 'seat').length, PLAYER_COUNT, '应显示全部座位');
+    assert.match(t, /开始游戏/, '应显示开局按钮');
   });
 
   test('法官模式下大厅不崩溃，且法官名有兜底', () => {

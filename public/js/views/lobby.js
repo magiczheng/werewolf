@@ -1,5 +1,4 @@
-// 大厅：房间号 / 二维码 / 座位 / 本局配置（只读）/ 开始
-import { seatLabel } from '../playerLabel.js';
+// 房间大厅：座位、入座进度，以及按需展开的邀请与房间详情。
 import { el, toast, confirmDialog, copyText } from '../ui.js';
 import { net, store } from '../net.js';
 import { seatGrid } from '../components/seats.js';
@@ -7,69 +6,96 @@ import { roomControls, firstGameGuide } from '../components/roomControls.js';
 import { roleArt } from '../components/roleArt.js';
 import { ROLE_META, RULES_LABELS } from '../constants.js';
 
-// 二维码按房间号缓存：每次推送都重新请求会生成一次二维码，
-// 且新 <img> 会先闪一下空白。
-const qrCache = new Map();
+const qrRequests = new Map();
+
+function inviteQRCode(code) {
+  if (!qrRequests.has(code)) {
+    const request = fetch(`/api/qr?room=${encodeURIComponent(code)}`)
+      .then(async response => {
+        if (!response.ok) throw new Error('二维码加载失败');
+        const { qr } = await response.json();
+        if (!qr) throw new Error('二维码加载失败');
+        return qr;
+      })
+      .catch(error => {
+        qrRequests.delete(code);
+        throw error;
+      });
+    qrRequests.set(code, request);
+  }
+  return qrRequests.get(code);
+}
 
 export function renderLobby(root) {
   const s = net.state;
   const me = s.me;
   const code = s.roomCode;
   const shareUrl = `${location.origin}/?room=${code}`;
+  const old = root.children[0];
+  const sameRoom = old?.dataset.room === code;
+  const reopenInvite = sameRoom && old.querySelector?.('.lobby-invitation')?.open;
+  const detailsOpen = sameRoom && old.querySelector?.('.lobby-details')?.open;
 
-  const occupied = s.players.filter((p) => p.name).length;
-  const empty = s.settings.playerCount - occupied;
+  const cfg = s.settings;
+  const occupied = s.players.filter(p => p.name).length;
+  const empty = cfg.playerCount - occupied;
+  const permitted = !!(me?.isHost || me?.isJudge);
+  const canStart = !!(permitted && s.canStart && !s.canStart.error);
 
-  // ---------- 座位 ----------
   const seats = seatGrid(s.players, {
     me,
-    onSit: (seat) => net.emit('sit', { seat }).catch((e) => toast(e.message, true)),
+    onSit: seat => net.emit('sit', { seat }).catch(e => toast(e.message, true)),
     showRole: false,
   });
-  seats.classList.add('felt-table');
+  const table = el('section', {
+    class: 'lobby-table felt-table' + (cfg.playerCount > 9 ? ' dense' : ''),
+    'aria-label': '选择你的座位',
+  }, seats);
 
-  // 已入座的人可以「离开座位」：把位置让出来后重新选，或让别人坐。
-  // 点了另一个空位也能直接换过去（引擎会自动让出旧座位），这里只是显式的入口。
-  const standUp = () => net.emit('standUp').catch((e) => toast(e.message, true));
-
-  const seatCard = el('div', { class: 'card glass col seats-card' }, [
-    el('div', { class: 'panel-title' }, [
-      '选择你的座位',
-      el('span', { class: 'pill', style: 'margin-left:8px' }, `${occupied}/${s.settings.playerCount}`),
+  const qr = el('img', { class: 'qr', alt: '房间二维码', hidden: true, width: 176, height: 176 });
+  const qrStatus = el('p', { class: 'hint invite-status', role: 'status' }, '正在加载二维码…');
+  const copyFeedback = el('p', { class: 'hint', role: 'status', hidden: true });
+  const invite = el('button', {
+    class: 'btn-ghost lobby-invite', type: 'button', 'aria-haspopup': 'dialog',
+    click: showInvite,
+  }, '邀请好友');
+  const dialog = el('dialog', {
+    class: 'lobby-invitation game-sheet glass', 'aria-label': '邀请好友',
+    click: event => { if (event.target === dialog) dialog.close(); },
+  }, [
+    el('header', { class: 'sheet-heading' }, [
+      el('h2', {}, '邀请好友'),
+      el('button', { class: 'btn-ghost sheet-close', type: 'button', click: () => dialog.close() }, '关闭'),
     ]),
-    el('div', { class: 'seating-progress', role: 'progressbar', 'aria-label': '入座进度', 'aria-valuenow': occupied, 'aria-valuemin': 0, 'aria-valuemax': s.settings.playerCount }, el('span', { style: `width:${occupied / s.settings.playerCount * 100}%` })),
-    el('p', { class: 'hint seating-intro' }, me?.seat ? `${seatLabel(s.players, me.seat)} 已入座，等待朋友加入。` : '每个人都需要选座，角色将在开局后随机分配。'),
-    seats,
-    el('div', { class: 'seating-footer' }, [
-      el('p', { class: 'hint' }, empty ? `还有 ${empty} 个空位 · ${me?.seat ? '点击空位即可换座' : '选择一个喜欢的位置'}` : '全员已入座，准备开始'),
-      me?.seat ? el('button', { class: 'link-btn', type: 'button', click: standUp }, '离开座位') : null,
+    el('div', { class: 'sheet-content col' }, [
+      qrStatus,
+      qr,
+      el('p', { class: 'invite-room' }, `房间号 ${code}`),
+      el('p', { class: 'share-link' }, shareUrl),
+      el('button', { class: 'btn-primary btn-big', type: 'button', click: async () => {
+        const ok = await copyText(shareUrl, dialog);
+        copyFeedback.textContent = ok ? '邀请链接已复制' : '请长按邀请链接复制';
+        copyFeedback.hidden = false;
+      } }, '复制链接'),
+      copyFeedback,
     ]),
-    s.waiting.length ? el('div', { class: 'waiting-block' }, [
-      el('div', { class: 'hint' }, '已加入，等待选座'),
-      el('div', { class: 'waiting-row' }, s.waiting.map((w) => el('span', { class: 'waiting-chip' }, w.name))),
-    ]) : null,
   ]);
+  dialog.addEventListener('close', () => invite.focus({ preventScroll: true }));
 
-  // ---------- 房间信息 ----------
-  const qrImg = el('img', { class: 'qr', alt: '房间二维码' });
-  const cachedQr = qrCache.get(code);
-  if (cachedQr) {
-    qrImg.src = cachedQr; // 命中缓存直接就位，不闪空白
-  } else {
-    fetch(`/api/qr?room=${encodeURIComponent(code)}`)
-      .then((r) => r.json())
-      .then((d) => {
-        if (!d || !d.qr) return;
-        qrCache.set(code, d.qr);
-        if (qrImg.isConnected) qrImg.src = d.qr;
-      })
-      .catch(() => { qrImg.alt = '二维码加载失败'; });
+  function showInvite() {
+    if (dialog.open) return;
+    dialog.showModal();
+    if (!qr.hidden) return;
+    qrStatus.textContent = '正在加载二维码…';
+    inviteQRCode(code).then(data => {
+      qr.src = data;
+      qr.hidden = false;
+      qrStatus.hidden = true;
+    }).catch(() => {
+      qrStatus.textContent = '二维码加载失败，可以复制邀请链接';
+    });
   }
 
-  const copyLink = async () => {
-    const ok = await copyText(shareUrl);
-    toast(ok ? '邀请链接已复制' : '请长按上方地址复制');
-  };
   const leaveRoom = async (event) => {
     const yes = await confirmDialog('离开房间？', '退出后需要重新输入房间号才能回来。', { confirmText: '离开', returnFocus: event?.currentTarget });
     if (!yes) return;
@@ -79,91 +105,67 @@ export function renderLobby(root) {
       net.clear();
     } catch (e) { toast(e.message, true); }
   };
-  const startGame = () => net.emit('startGame').catch((e) => toast(e.message, true));
 
-  const shareCard = el('div', { class: 'card glass share-box col' }, [
-    el('div', { class: 'spread' }, [
-      el('div', { class: 'panel-title', style: 'margin:0' }, '邀请加入'),
-      el('span', { class: 'pill' + (s.judgeMode ? ' gold' : '') }, s.judgeMode ? '👨‍⚖️ 法官模式' : '自动模式'),
+  const roles = Object.entries(cfg.roles || {}).filter(([, n]) => n > 0).map(([key, n]) => {
+    const meta = ROLE_META[key];
+    return el('span', { class: 'cfg-chip cfg-role' + (meta?.camp === 'wolf' ? ' wolf' : '') }, [
+      roleArt(key, { className: 'cfg-role-art' }), el('span', {}, `${meta?.name || key} ×${n}`),
+    ]);
+  });
+  const activeRules = RULES_LABELS.filter(([key]) => cfg.rules?.[key]);
+  const details = el('details', { class: 'lobby-details', open: detailsOpen }, [
+    el('summary', {}, '房间详情'),
+    el('div', { class: 'lobby-details-content col' }, [
+      s.waiting.length ? el('div', { class: 'waiting-block' }, [
+        el('p', { class: 'hint' }, '已加入，等待选座'),
+        el('div', { class: 'waiting-row' }, s.waiting.map(w => el('span', { class: 'waiting-chip' }, w.name))),
+      ]) : null,
+      el('section', { class: 'card glass col lobby-config' }, [
+        el('h2', { class: 'panel-title' }, '本局配置'),
+        el('div', { class: 'cfg-chips' }, [
+          el('span', { class: 'cfg-chip strong' }, `${cfg.playerCount} 人局`),
+          el('span', { class: 'cfg-chip' + (s.judgeMode ? ' gold' : '') }, s.judgeMode ? '法官模式' : '自动模式'),
+          s.judge ? el('span', { class: 'cfg-chip' }, `法官 · ${s.judge.name || (me.isJudge ? '你' : '—')}`) : null,
+        ]),
+        el('div', { class: 'cfg-chips' }, roles),
+        activeRules.length ? el('div', { class: 'cfg-chips' }, activeRules.map(([, label]) => el('span', { class: 'cfg-chip muted-chip' }, label))) : null,
+      ]),
+      roomControls(s),
+      firstGameGuide(),
     ]),
-    qrImg,
-    el('div', { class: 'room-code' }, code),
-    el('div', { class: 'share-link' }, shareUrl),
-    el('div', { class: 'row' }, [
-      el('button', { class: 'btn-ghost grow', type: 'button', click: copyLink }, '复制链接'),
-      el('button', { class: 'btn-ghost', type: 'button', click: leaveRoom }, '离开'),
-    ]),
-    // 法官本人看到的 s.judge 是完整状态对象（没有 name 字段），
-    // 非法官看到的才是 {name, connected}——所以这里要兜底。
-    s.judge ? el('div', { class: 'spread judge-row' }, [
-      el('span', { class: 'hint' }, '👨‍⚖️ 法官'),
-      el('span', {}, s.judge.name || (me.isJudge ? '你' : '—')),
-    ]) : null,
   ]);
 
-  const parts = [
-    el('div', { class: 'lobby-head' }, [
-      el('div', { class: 'lobby-brand' }, [el('span', { class: 'lobby-moon', 'aria-hidden': 'true' }, '☾'), el('span', {}, '月夜俱乐部')]),
-      el('button', { class: 'lobby-code', type: 'button', click: copyLink, 'aria-label': `复制房间 ${code} 的邀请链接` }, [el('span', {}, '房间号'), el('strong', {}, code)]),
-      el('button', { class: 'link-btn', type: 'button', click: leaveRoom }, '退出'),
-    ]),
-    el('div', { class: 'lobby-intro' }, [
+  const view = el('div', {
+    class: 'view lobby-view' + (sameRoom ? '' : ' view-enter'), 'data-room': code,
+  }, [
+    el('header', { class: 'lobby-head' }, [
       el('h1', { class: 'screen-title lobby-title' }, '房间大厅'),
-      el('button', { class: 'btn-ghost lobby-invite', type: 'button', click: copyLink }, '邀请好友'),
+      el('p', { class: 'lobby-room' }, ['房间号 ', el('strong', { class: 'room-code' }, code)]),
+      invite,
+      el('button', { class: 'link-btn lobby-exit', type: 'button', click: leaveRoom }, '离开'),
     ]),
-    seatCard,
-    shareCard,
-  ];
-
-  // ---------- 开始按钮 ----------
-  const permitted = !!(me?.isHost || me?.isJudge);
-  const canStart = !!(permitted && s.canStart && !s.canStart.error);
-  parts.push(el('div', { class: 'lobby-launch' + (canStart ? ' is-ready' : ' is-waiting') }, [
-    el('div', { class: 'launch-caption' }, [el('span', { class: 'launch-status-dot' + (canStart ? ' ready' : '') }), el('span', {}, canStart ? '所有席位已就绪' : `已入座 ${occupied} / ${s.settings.playerCount}`), canStart ? null : el('span', { class: 'launch-detail' }, empty ? `还差 ${empty} 位朋友` : (permitted && s.canStart?.error) || '等待房主开局')]),
-    permitted ? el('button', { class: 'btn-primary btn-big sticky-cta', type: 'button', disabled: !canStart, click: startGame }, '开始游戏') : null,
-  ]));
-
-  // ---------- 本局配置（只读）----------
-  // 配置在创建房间时定好，进入大厅后不再允许修改——服务端也已移除修改入口，
-  // 这里只做展示，且所有人都看得到，便于开局前确认板子是否符合预期。
-  const cfg = s.settings;
-  const roleChips = Object.entries(cfg.roles || {})
-    .filter(([, n]) => n > 0)
-    .map(([key, n]) => {
-      const meta = ROLE_META[key];
-      return el('span', {
-        class: 'cfg-chip cfg-role' + (meta && meta.camp === 'wolf' ? ' wolf' : ''),
-      }, [roleArt(key, { className: 'cfg-role-art' }), el('span', {}, `${meta ? meta.name : key} ×${n}`)]);
-    });
-
-  const activeRules = RULES_LABELS.filter(([key]) => cfg.rules && cfg.rules[key]);
-
-  parts.push(el('div', { class: 'card glass col lobby-config' }, [
-    el('div', { class: 'panel-title' }, [
-      '本局配置',
-      el('span', { class: 'cfg-locked' }, '创建后不可修改'),
+    table,
+    el('section', { class: 'lobby-launch', 'aria-label': '开局进度' }, [
+      el('p', { class: 'launch-caption', role: 'status' }, `已入座 ${occupied} / ${cfg.playerCount}`),
+      el('p', { class: 'launch-detail' }, canStart ? '全员已入座' : empty ? `还差 ${empty} 人` : (permitted && s.canStart?.error) || '等待房主开局'),
+      permitted ? el('button', {
+        class: 'btn-primary btn-big lobby-start', type: 'button', disabled: !canStart,
+        click: () => net.emit('startGame').catch(e => toast(e.message, true)),
+      }, '开始游戏') : null,
     ]),
-    el('div', { class: 'cfg-chips' }, [
-      el('span', { class: 'cfg-chip strong' }, `${cfg.playerCount} 人局`),
-      el('span', { class: 'cfg-chip' + (cfg.judgeMode ? ' gold' : '') }, cfg.judgeMode ? '👨‍⚖️ 法官模式' : '自动模式'),
+    el('footer', { class: 'lobby-utilities' }, [
+      details,
+      me?.seat ? el('button', {
+        class: 'link-btn lobby-stand', type: 'button',
+        click: () => net.emit('standUp').catch(e => toast(e.message, true)),
+      }, '离开座位') : null,
     ]),
-    el('div', { class: 'cfg-chips' }, roleChips),
-    activeRules.length
-      ? el('div', { class: 'cfg-chips' }, activeRules.map(([, label]) => el('span', { class: 'cfg-chip muted-chip' }, label)))
-      : null,
-  ]));
-
-  parts.push(roomControls(s), firstGameGuide());
-  const old = root.children[0];
-  const view = el('div', { class: 'view lobby-view col' + (old?.classList.contains('lobby-view') ? '' : ' view-enter') }, parts);
-  if (old?.classList.contains('lobby-view') && old.dataset.room === code) {
-    const oldShare = [...old.children].find(n => n.classList.contains('share-box'));
-    if (oldShare && oldShare._shareKey === JSON.stringify(s.judge)) shareCard.replaceWith(oldShare);
-    const oldCfg = [...old.children].find(n => n.classList.contains('lobby-config'));
-    const newCfg = [...view.children].find(n => n.classList.contains('lobby-config'));
-    if (oldCfg && newCfg) newCfg.replaceWith(oldCfg);
-    old.replaceWith(view);
-  } else { root.innerHTML = ''; root.appendChild(view); }
-  shareCard._shareKey = JSON.stringify(s.judge);
-  view.dataset.room = code;
+    dialog,
+  ]);
+  if (sameRoom) old.replaceWith(view);
+  else {
+    root.innerHTML = '';
+    root.appendChild(view);
+  }
+  if (reopenInvite) showInvite();
 }

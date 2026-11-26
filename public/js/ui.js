@@ -171,7 +171,7 @@ export function toast(msg, isErr = false) {
  * http://192.168.x.x:3000 访问——那是不安全源，navigator.clipboard 为 undefined。
  * @returns {Promise<boolean>} 是否已成功写入剪贴板
  */
-export async function copyText(text) {
+export async function copyText(text, container = document.body) {
   // 1) 标准 API（仅安全上下文可用）
   try {
     if (navigator.clipboard && window.isSecureContext) {
@@ -186,14 +186,17 @@ export async function copyText(text) {
     ta.value = text;
     ta.setAttribute('readonly', '');
     ta.style.cssText = 'position:fixed;top:0;left:-9999px;opacity:0';
-    document.body.appendChild(ta);
-    ta.select();
-    ta.setSelectionRange(0, text.length);
-    const ok = document.execCommand('copy');
-    document.body.removeChild(ta);
-    if (ok) return true;
+    container.appendChild(ta);
+    try {
+      ta.select();
+      ta.setSelectionRange(0, text.length);
+      if (document.execCommand('copy')) return true;
+    } finally {
+      ta.remove();
+    }
   } catch (_e) { /* 继续降级 */ }
 
+  if (container !== document.body) return false; // 邀请弹窗内已有可手动复制的地址。
   // 3) 弹窗让用户长按手动复制。
   //    这里绝不能用 toast——它 2 秒就消失，用户根本来不及选中。
   const root = document.getElementById('modal-root');

@@ -35,6 +35,7 @@ test('常用板子、人数上限、昵称和配置记忆', async ({ page }) => 
   await expect(page.getByLabel('游戏人数')).toHaveValue('12');
   await page.reload(); await expect(page.getByLabel('游戏人数')).toHaveValue('12');
   await noOverflow(page); await createRoom(page);
+  await page.locator('.lobby-details > summary').click();
   await expect(page.locator('.waiting-chip')).toHaveText('本局昵称');
   await expect(page.getByText('第一次来？三步开启月夜')).toBeVisible();
   await page.getByRole('button', { name: '我知道了', exact: true }).click();
@@ -218,12 +219,14 @@ test('房主可主动移交，其他在线成员接任后能管理房间', async
   await guest.getByRole('button', { name: '加入房间', exact: true }).click();
   await guest.getByLabel('房间号', { exact: true }).fill(code);
   await guest.getByRole('button', { name: '进入房间', exact: true }).click();
+  await page.locator('.lobby-details > summary').click();
   await page.locator('.room-controls > summary').click();
   const chooser = page.getByLabel('选择新房主');
   await expect(chooser.locator('option')).toHaveCount(2);
   await chooser.selectOption({ index: 1 }); await page.getByRole('button', { name: '移交', exact: true }).click();
   await expect(page.getByRole('dialog', { name: '移交房主？' })).toContainText('聚会来客');
   await page.getByRole('button', { name: '移交', exact: true }).last().click();
+  await guest.locator('.lobby-details > summary').click();
   await guest.locator('.room-controls > summary').click();
   await expect(guest.getByLabel('选择新房主')).toBeVisible();
   await expect(page.getByLabel('选择新房主')).toHaveCount(0);
@@ -275,28 +278,50 @@ test('减少动态效果偏好下取消入场和循环动效', async ({ page }) 
   await noOverflow(page);
 });
 
-// A page can avoid overflow and still shrink its cards to an unusably narrow column.
-test('手机大厅铺满屏幕，九个座位在底部操作区上方完整可见', async ({ page }, testInfo) => {
+test('手机大厅的座位全部在桌内，开局按钮和二维码互不遮挡', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name === 'desktop', '仅检查手机断点');
-  await register(page); await createRoom(page);
-  for (const viewport of [{ width: 390, height: 844 }, { width: 375, height: 812 }, { width: 430, height: 932 }]) {
-    await page.setViewportSize(viewport);
-    const geometry = await page.evaluate(() => {
-      const rect = selector => document.querySelector(selector).getBoundingClientRect();
-      const view = rect('.lobby-view'), card = rect('.seats-card'), head = rect('.lobby-head');
-      const seats = document.querySelectorAll('.seat-grid .seat');
-      const last = seats[seats.length - 1].getBoundingClientRect();
-      const dock = rect('.lobby-launch');
-      return { viewWidth: view.width, cardWidth: card.width, headWidth: head.width, lastBottom: last.bottom, dockTop: dock.top };
-    });
-    expect(Math.abs(geometry.viewWidth - geometry.cardWidth)).toBeLessThan(2);
-    expect(Math.abs(geometry.viewWidth - geometry.headWidth)).toBeLessThan(2);
-    expect(geometry.lastBottom).toBeLessThan(geometry.dockTop);
-    await expect(page.locator('.lobby-invite')).toBeInViewport();
-    await noOverflow(page);
-  }
+  const qrRequests = [];
+  page.on('request', request => { if (request.url().includes('/api/qr')) qrRequests.push(request.url()); });
+  await register(page); const code = await createRoom(page);
   await page.getByRole('button', { name: '1号座位，点击入座', exact: true }).click();
   await expect(page.locator('.seat.mine .name')).toHaveText('本局昵称');
+  await expect(page.locator('.launch-caption')).toHaveText('已入座 1 / 9');
+  for (const viewport of [{ width: 390, height: 707 }, { width: 375, height: 620 }, { width: 430, height: 740 }]) {
+    await page.setViewportSize(viewport);
+    const geometry = await page.evaluate(() => {
+      const table = document.querySelector('.lobby-table').getBoundingClientRect();
+      const invite = document.querySelector('.lobby-invite').getBoundingClientRect();
+      const seats = [...document.querySelectorAll('.lobby-table .seat')];
+      const launch = document.querySelector('.lobby-launch');
+      return {
+        tokensInside: seats.every(seat => {
+          const token = seat.querySelector('.seat-no').getBoundingClientRect();
+          return [token.left, token.right].every(x => [token.top, token.bottom].every(y =>
+            ((x - table.left) / table.width * 2 - 1) ** 2
+              + ((y - table.top) / table.height * 2 - 1) ** 2 < 1,
+          ));
+        }),
+        touchTargetsFit: seats.every(seat => seat.clientWidth >= 44 && seat.clientHeight >= 44),
+        inFlow: getComputedStyle(launch).position === 'static' && table.bottom < launch.getBoundingClientRect().top,
+        inviteCentered: Math.abs(invite.left + invite.width / 2 - table.left - table.width / 2) < 1,
+      };
+    });
+    expect(geometry).toEqual({ tokensInside: true, touchTargetsFit: true, inFlow: true, inviteCentered: true });
+    await expect(page.locator('.lobby-invite')).toBeInViewport();
+    await expect(page.getByRole('button', { name: '开始游戏' })).toBeInViewport({ ratio: 1 });
+    await noOverflow(page);
+  }
+  expect(qrRequests).toHaveLength(0);
+  await page.setViewportSize({ width: 390, height: 707 });
+  await page.screenshot({ path: testInfo.outputPath('lobby-one-seated.png'), style: '.mode-badge, #toast { display: none; }' });
+  const invite = page.getByRole('button', { name: '邀请好友' });
+  await invite.click();
+  const dialog = page.getByRole('dialog', { name: '邀请好友' });
+  await expect(dialog.getByAltText('房间二维码')).toBeVisible();
+  await expect(dialog).toContainText(`?room=${code}`);
+  await dialog.getByRole('button', { name: '关闭' }).click();
+  await expect(invite).toBeFocused();
+  await expect(dialog).toHaveCount(0);
   await expect(page.getByRole('button', { name: '离开座位', exact: true })).toBeVisible();
   await noOverflow(page);
 });
@@ -314,6 +339,7 @@ test('页面版本与服务端版本接口一致，版本响应不缓存', async
 
 test('存储写入被浏览器拒绝时，收起引导仍有反馈且不阻塞操作', async ({ page }) => {
   await register(page); await createRoom(page);
+  await page.locator('.lobby-details > summary').click();
   await page.evaluate(() => {
     Storage.prototype.setItem = () => { throw new Error('storage unavailable'); };
     Storage.prototype.removeItem = () => { throw new Error('storage unavailable'); };
