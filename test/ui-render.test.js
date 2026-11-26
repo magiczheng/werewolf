@@ -142,7 +142,7 @@ describe('未登录与首页', () => {
   test('未登录时渲染登录卡片（不是白屏）', () => {
     const root = renderAndAssert('auth', null);
     const t = textOf(root);
-    assert.match(t, /狼人杀/, '应出现品牌名');
+    assert.match(t, /月夜俱乐部/, '应出现品牌名');
     assert.match(t, /登录|注册/, '应出现登录/注册入口');
   });
 
@@ -663,8 +663,8 @@ describe('预言家查验', () => {
     const hist = findByClass(root, 'seer-chip');
     assert.equal(hist.length, 2, '两条历史应各占一块');
     const text = hist.map(textOf).join(' | ');
-    assert.match(text, /2号\s*狼人/, '历史里应直接写出身份');
-    assert.match(text, /4号\s*好人/);
+    assert.match(text, /玩家2（2号）\s*狼人/, '历史里应直接写出昵称和身份');
+    assert.match(text, /玩家4（4号）\s*好人/);
   });
 
   test('非预言家在预言家阶段只看到等待提示', () => {

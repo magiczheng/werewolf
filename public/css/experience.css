@@ -410,7 +410,6 @@ button[aria-busy=true]::before { content: ''; display: inline-block; width: 12px
 }
 @media (prefers-reduced-motion: reduce) { button[aria-busy=true]::before { animation: none; } }
 [hidden] { display: none !important; }
-.vote-result { font-size: 13px; color: #dfc893; line-height: 1.8; }
 .board-action-controls { gap: 8px; }
 .board-action-controls > button { width: 100%; min-height: 44px; }
 .btn-primary[aria-busy=true]::before { content: none; }
@@ -488,6 +487,8 @@ body.multi-account .unified-game .game-topbar { padding-top: 8px; }
 .sheet-content .card { padding: 14px; box-shadow: none; }
 .sheet-content .replay-panel { border: 0; padding: 0; background: transparent; }
 .sheet-content .replay-panel > summary { display: none; }
+.sheet-content .replay-panel > .disclosure-body { margin: 0; padding: 0; border: 0; gap: 0; }
+.sheet-content .vote-record:first-child { border-top: 0; padding-top: 0; }
 .sheet-content .blast-box { order: -1; }
 @media (max-width: 720px) {
  .game-sheet-mask { align-items: flex-end; padding: calc(12px + var(--safe-top)) 8px calc(8px + var(--safe-bottom)); }
@@ -508,6 +509,18 @@ body.multi-account .unified-game .game-topbar { padding-top: 8px; }
 .unified-game .seat.dead:not(.activity-speaking) .seat-activity,
 .unified-game .seat:has(.idiot-tag) .role-tag { display: none; }
 .unified-game .seat.dead .role-tag::after { content: ' · 出局'; }
+.unified-game .game-board.finished .seat-grid .seat { padding: 3px; gap: 2px; }
+.unified-game .game-board.finished .seat.dead { opacity: 1; }
+.unified-game .game-board.finished .seat .name {
+  flex: none; white-space: normal; overflow-wrap: anywhere; line-height: 1.2;
+  font-size: 10.5px; text-decoration: none; text-align: center;
+}
+.unified-game .game-board.finished .seat:has(.idiot-tag) .role-tag { display: inline-block; }
+.unified-game .game-board.finished .seat .idiot-tag { display: none; }
+.unified-game .game-board.finished .seat-role-art { display: none; }
+.unified-game .game-board.finished .seat-no { font-size: 14px; }
+.pending-roster li { max-width: 100%; overflow-wrap: anywhere; }
+.speaker-seat, .speaker-detail-seat, .sr-seat, .jl-v, .modal-body { overflow-wrap: anywhere; }
 
 /* 牌桌使用日夜两套光色。座位、操作和工具共用同一张桌面。 */
 .unified-game {
@@ -621,4 +634,63 @@ body.multi-account .unified-game .game-topbar { padding-top: 8px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .round-track > span, .unified-game .game-board .seat-grid .seat { transition: none; }
+}
+
+/* Status text and targets work together; the table stays usable at four rows. */
+.unified-game .round-progress { gap: 0; }
+.pending-link {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 6px; min-height: 28px; width: 100%; padding: 2px 0;
+  border: 0; border-radius: 5px; background: none; text-align: left;
+}
+.pending-link:focus-visible { outline-offset: 1px; }
+.pending-chevron { color: #e8cc93; font-size: 17px; line-height: 1; padding-right: 2px; }
+.pending-roster { display: flex; flex-wrap: wrap; gap: 7px; padding: 0; list-style: none; }
+.pending-roster li {
+  padding: 7px 10px; border: 1px solid #9bbaa445; border-radius: 8px;
+  background: #20382c; color: #e2efdf; font-size: 13px;
+}
+.pending-roster .is-offline { background: #40372d; color: #f2ceaa; border-color: #db9e655e; }
+.unified-game .compact-actions {
+  display: grid; grid-template-columns: auto minmax(0, 1fr);
+  align-items: start; gap: 4px 7px;
+}
+.action-state-label {
+  align-self: start; padding: 2px 6px; border-radius: 5px;
+  background: #91ae9f24; color: #c8dccc; font-size: 10px; line-height: 1.4; white-space: nowrap;
+}
+.can-act .action-state-label { color: #201d12; background: #e5c98e; }
+.action-complete .action-state-label { color: #d6ead8; background: #47785866; }
+.unified-game .action-status { color: #e6ebdf; overflow-wrap: anywhere; }
+.unified-game .board-action-controls > .btn-primary ~ .end-phase-btn {
+  background: #24392f; border-color: #d8c49850; color: #eadcba;
+}
+.unified-game .compact-actions > :nth-child(n + 3) { grid-column: 1 / -1; }
+.game-view:has(.stage-night) .game-board {
+  --table-felt: #17252a;
+  background: radial-gradient(ellipse at 50% 5%, #263a45 0%, var(--table-felt) 70%, #142123 100%);
+}
+.game-view:has(.stage-night) .game-board .seat:not(.selectable):not(.selected) {
+  background: linear-gradient(155deg, #2c3e45, #202f34 80%);
+}
+.unified-game .game-board .seat-activity {
+  max-width: 100%; padding: 0 4px; border-radius: 4px;
+  overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.unified-game .game-board .activity-done .seat-activity { background: #87bc9c1f; }
+.unified-game .game-board .activity-speaking .seat-activity { background: #e6c68337; color: #fff2cf; }
+.unified-game .game-board .activity-excluded .seat-activity { font-size: 9px; }
+.unified-game .stage-enter .stage-emblem { animation: stage-arrive 210ms ease-out both; }
+.game-sheet-mask.sheet-enter .game-sheet { animation: sheet-arrive 170ms ease-out both; }
+@keyframes stage-arrive {
+  from { opacity: .45; transform: scale(.9); }
+  to { opacity: 1; transform: scale(1); }
+}
+@keyframes sheet-arrive {
+  from { opacity: .5; transform: translateY(9px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .unified-game .stage-enter .stage-emblem,
+  .game-sheet-mask.sheet-enter .game-sheet { animation: none; }
 }

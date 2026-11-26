@@ -5,6 +5,22 @@ const FIELDS = ['code', 'gameId', 'phaseId', 'revision', 'historySeq', 'settings
   'pendingDay', 'afterQueue', '_deferredNightDeaths', '_sheriffElectionDone', 'totalDeaths',
   'news', 'newsSeq', 'lastActive', 'history', 'privateHistory', 'voteHistory'];
 
+// Older room saves contain complete sentences. Only upgrade known engine-generated
+// seat references, leaving arbitrary display names in other announcements intact.
+const LEGACY_NAMED_EVENT = /^(?:\d+号 (?:开始(?:竞选|白天)发言|已结束白天发言|发表遗言|请移交警徽|在昨夜死亡|当选警长|被放逐|狼人自爆)|(?:警长|白痴|白狼王|猎人) \d+号 |(?:\d+、)*\d+号 平票)/;
+const LEGACY_ACTION = /^\d+号 [^·]+ · (?:投刀|守护|查验|使用解药救|使用毒药毒)/;
+
+function restoreAnnouncementNames(room) {
+  for (const entry of [...room.news, ...room.history, ...room.privateHistory]) {
+    const death = /^(\d+)号 在昨夜死亡$/.exec(entry.text);
+    if (death) entry.nightDeathSeat = Number(death[1]);
+    if (LEGACY_NAMED_EVENT.test(entry.text) || LEGACY_ACTION.test(entry.text)) {
+      entry.text = entry.text.replace(/(\d+(?:、\d+)*)号/g,
+        (_, seats) => seats.split('、').map(seat => room._labelSeat(Number(seat))).join('、'));
+    }
+  }
+}
+
 export function serializeRoom(room) {
   const data = Object.fromEntries(FIELDS.map(k => [k, room[k]]));
   data.players = [...room.players.values()];
@@ -33,6 +49,9 @@ export function restoreRoom(json, onChange, { disconnected = true } = {}) {
       room.seatMap[p.seat] = p.playerId;
     }
   }
+  const namesBySeat = room._seatedNames();
+  for (const round of room.voteHistory) round.namesBySeat ??= namesBySeat;
+  restoreAnnouncementNames(room);
   room.receipts = new Map(d.receipts || []);
   room.sheriffState = d.sheriffState && { ...d.sheriffState, onPodium: new Set(d.sheriffState.onPodium), withdrawn: new Set(d.sheriffState.withdrawn), votes: new Map(d.sheriffState.votes) };
   // Older speech snapshots still retain the initial order, so recover known candidacies.

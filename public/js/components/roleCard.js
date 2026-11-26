@@ -7,9 +7,11 @@
 // 角色名本身已经说明了阵营（狼人/预言家/村民…），不需要靠颜色去喊。
 import { roleArt } from './roleArt.js';
 import { el } from '../ui.js';
+import { seatLabel } from '../playerLabel.js';
 
 /** 角色名 + 阵营 + 描述 + 私有信息，身份牌与浮层共用同一份内容。 */
 export function roleLines(s) {
+  const label = seat => seatLabel(s.players, seat);
   const me = s.me;
   const priv = s.private || {};
   const extras = [];
@@ -18,7 +20,7 @@ export function roleLines(s) {
     extras.push(el('div', { class: 'rc-extra' }, [
       el('span', { class: 'rc-k' }, '狼队友'),
       el('span', { class: 'rc-v' }, me.wolfTeammates.length
-        ? me.wolfTeammates.map((n) => `${n}号`).join('、')
+        ? me.wolfTeammates.map((n) => `${label(n)}`).join('、')
         : '（无）'),
     ]));
   }
@@ -35,7 +37,7 @@ export function roleLines(s) {
     if (priv.witch.killTarget) {
       extras.push(el('div', { class: 'rc-extra' }, [
         el('span', { class: 'rc-k' }, '今夜刀口'),
-        el('span', { class: 'rc-v' }, `${priv.witch.killTarget}号`),
+        el('span', { class: 'rc-v' }, `${label(priv.witch.killTarget)}`),
       ]));
     }
   }
@@ -45,14 +47,14 @@ export function roleLines(s) {
       el('span', { class: 'rc-k' }, '验人记录'),
       el('span', { class: 'rc-v rc-checks' }, priv.seerHistory.map((h) => el('span', {
         class: 'rc-check',
-      }, `${h.seat}号 ${h.camp === 'wolf' ? '狼' : '好'}`))),
+      }, `${label(h.seat)} ${h.camp === 'wolf' ? '狼' : '好'}`))),
     ]));
   }
 
   if (priv.guardLastTarget) {
     extras.push(el('div', { class: 'rc-extra' }, [
       el('span', { class: 'rc-k' }, '上一晚守护'),
-      el('span', { class: 'rc-v' }, `${priv.guardLastTarget}号`),
+      el('span', { class: 'rc-v' }, `${label(priv.guardLastTarget)}`),
     ]));
   }
 

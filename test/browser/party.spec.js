@@ -2,12 +2,12 @@ import { test, expect } from '@playwright/test';
 import { randomUUID } from 'node:crypto';
 
 async function register(page) {
-  await page.goto('/'); await page.getByRole('button', { name: '注册', exact: true }).click();
+  await page.goto('/'); await page.getByRole('button', { name: '注册账号', exact: true }).click();
   await page.getByLabel('邮箱地址', { exact: true }).fill(`browser-${randomUUID()}@test.dev`);
   await page.getByLabel('密码', { exact: true }).fill('BrowserLocal123');
   await page.getByLabel('昵称（可选）', { exact: true }).fill('聚会来客');
   await page.getByRole('button', { name: '创建账号', exact: true }).click();
-  await expect(page.getByRole('heading', { name: '今晚，组一局。' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: '创建房间' })).toBeVisible();
 }
 async function createRoom(page) {
   await page.getByLabel('你的昵称', { exact: true }).fill('本局昵称');
@@ -82,24 +82,26 @@ test('Service Worker 更新使用网络中的样式，不继续展示旧缓存',
     const cache = await caches.open('werewolf-hardening-v4');
     await cache.put('/css/theme.css', new Response('body { display: none !important }', { headers: { 'Content-Type': 'text/css' } }));
   });
-  await page.reload(); await expect(page.getByRole('heading', { name: '欢迎回到月夜' })).toBeVisible();
+  await page.reload(); await expect(page.getByRole('heading', { name: '月夜俱乐部' })).toBeVisible();
 });
 
 test('九人真实页面：发牌、第一夜、退水顺序及投票记录', async ({ browser, baseURL }, testInfo) => {
   test.setTimeout(120000); // WebKit needs more time to run nine isolated browser contexts in CI.
   const contexts = []; const players = [];
+  const nicknames = ['本局昵称', '小满', '南风', '月白', '青禾', '归林', '山茶', '晚钟', '白露'];
   try {
     for (let i = 1; i <= 9; i++) {
       const context = await browser.newContext({ baseURL, viewport: testInfo.project.use.viewport }); contexts.push(context);
       const page = await context.newPage(); await page.goto('/');
       await page.getByRole('button', { name: String(i), exact: true }).click();
-      await expect(page.getByRole('heading', { name: '今晚，组一局。' })).toBeVisible();
-      players.push({ page, seat: i });
+      await expect(page.getByRole('heading', { name: '创建房间' })).toBeVisible();
+      players.push({ page, seat: i, name: nicknames[i - 1] });
     }
     const host = players[0].page; const code = await createRoom(host);
     await host.getByRole('button', { name: '1号座位，点击入座', exact: true }).click();
     for (const p of players.slice(1)) {
       await p.page.getByRole('button', { name: '加入房间', exact: true }).click();
+      await p.page.getByLabel('昵称', { exact: true }).fill(p.name);
       await p.page.getByLabel('房间号', { exact: true }).fill(code);
       await p.page.getByRole('button', { name: '进入房间', exact: true }).click();
       await p.page.getByRole('button', { name: `${p.seat}号座位，点击入座`, exact: true }).click();
@@ -137,30 +139,32 @@ test('九人真实页面：发牌、第一夜、退水顺序及投票记录', as
     const poisonSeat = await poisonTarget.getAttribute('data-seat');
     await poisonTarget.click();
     const poisonDialog = witch.getByRole('dialog', { name: '确认使用毒药？' });
-    await expect(poisonDialog).toContainText(`对 ${poisonSeat}号使用毒药`);
+    await expect(poisonDialog).toContainText(`对 ${nicknames[Number(poisonSeat) - 1]}（${poisonSeat}号）使用毒药`);
     await expect(poisonDialog.getByRole('button', { name: '确认用毒', exact: true })).toBeVisible();
     await poisonDialog.getByRole('button', { name: '取消', exact: true }).click();
     await expect(poisonTarget).toBeEnabled();
-    await witch.getByRole('button', { name: `使用解药救 ${target.seat}号`, exact: true }).click();
+    await witch.getByRole('button', { name: `使用解药救 ${target.name}（${target.seat}号）`, exact: true }).click();
     const seer = players.find(p => p.role === '预言家').page;
     await seer.locator(`.game-board .seat.selectable[data-seat="${wolves[0].seat}"]`).click();
     await expect(host.locator('.gt-phase')).toContainText('天亮了');
     await expect(seer.locator('.seer-result')).toContainText('狼人');
+    await expect(seer.locator('.seer-result')).toContainText(wolves[0].name);
     await seer.getByRole('button', { name: '按住查看身份牌' }).focus();
     await seer.keyboard.down('Space'); await expect(seer.locator('.peek-panel .identity-art')).toBeVisible();
     await seer.keyboard.up('Space'); await expect(seer.locator('.peek-mask')).toHaveCount(0);
     await expect(host.locator('.identity-art')).toHaveCount(0);
     await host.getByRole('button', { name: '进入下一步', exact: true }).click();
     for (const p of players) await p.page.getByRole('button', { name: p.seat <= 3 ? '上警（参加竞选）' : '警下（不竞选）', exact: true }).click();
-    await expect(host.locator('.speaker-seat')).toHaveText('1号');
+    await expect(host.locator('.speaker-seat')).toHaveText('本局昵称（1号）');
     await host.getByRole('button', { name: '退水（放弃竞选）', exact: true }).click();
-    await expect(players[1].page.locator('.speaker-seat')).toHaveText('2号');
+    await expect(players[1].page.locator('.speaker-seat')).toHaveText('小满（2号）');
     await players[1].page.getByRole('button', { name: '结束发言', exact: true }).click();
     await players[2].page.getByRole('button', { name: '结束发言', exact: true }).click();
     await expect(host.locator('.game-board .seat.selectable')).toHaveCount(0);
     for (const p of players.filter(p => p.seat >= 4)) {
       await p.page.locator('.game-board .seat.selectable[data-seat="2"]').click();
       if (p.seat === 4) {
+        await expect(p.page.getByRole('dialog', { name: '确认投票？' })).toContainText('小满（2号）');
         await p.page.getByRole('button', { name: '取消', exact: true }).click();
         await expect(p.page.locator('.game-board .seat.selectable[data-seat="2"]')).toBeEnabled();
         await p.page.locator('.game-board .seat.selectable[data-seat="2"]').click();
@@ -173,10 +177,15 @@ test('九人真实页面：发牌、第一夜、退水顺序及投票记录', as
     }
     await expect(host.locator('.gt-phase')).toContainText('白天发言');
     await host.getByRole('button', { name: '投票记录', exact: true }).click();
-    await expect(host.locator('.vote-record').filter({ hasText: '警长投票' })).toBeVisible();
+    const sheriffRecord = host.locator('.vote-record').filter({ hasText: '警长投票' });
+    await expect(sheriffRecord.locator('.vote-voters')).toHaveText(nicknames.slice(3).join('、'));
+    await expect(sheriffRecord.locator('.vote-target')).toHaveText('小满');
     await host.getByRole('button', { name: '关闭', exact: true }).click();
     await host.locator('.game-board .seat.selectable[data-seat="4"]').click();
     await expect(players[4].page.locator('.game-board .seat[data-seat="4"] .seat-activity')).toHaveText('正在发言');
+    await host.getByRole('button', { name: '进入放逐投票', exact: true }).click();
+    await expect(host.getByRole('dialog', { name: '现在开始放逐投票？' })).toContainText('月白（4号）仍在发言');
+    await host.getByRole('button', { name: '取消', exact: true }).click();
     await players[3].page.getByRole('button', { name: '结束我的发言', exact: true }).click();
     await expect(host.locator('.game-board .seat[data-seat="4"] .seat-activity')).toHaveText('已发言');
     await host.getByRole('button', { name: '进入放逐投票', exact: true }).click();
@@ -196,7 +205,9 @@ test('九人真实页面：发牌、第一夜、退水顺序及投票记录', as
       await p.page.getByRole('button', { name: '确认投票', exact: true }).click();
     }
     await host.getByRole('button', { name: '投票记录', exact: true }).click();
-    await expect(host.locator('.vote-record').filter({ hasText: '放逐 PK' })).toBeVisible();
+    const pkRecord = host.locator('.vote-record').filter({ hasText: '放逐 PK' });
+    await expect(pkRecord.locator('.vote-voters')).toContainText('本局昵称、小满');
+    await expect(pkRecord.locator('.vote-target')).toHaveText('晚钟');
     await noOverflow(host);
   } finally { for (const context of contexts) await context.close(); }
 });
@@ -211,6 +222,7 @@ test('房主可主动移交，其他在线成员接任后能管理房间', async
   const chooser = page.getByLabel('选择新房主');
   await expect(chooser.locator('option')).toHaveCount(2);
   await chooser.selectOption({ index: 1 }); await page.getByRole('button', { name: '移交', exact: true }).click();
+  await expect(page.getByRole('dialog', { name: '移交房主？' })).toContainText('聚会来客');
   await page.getByRole('button', { name: '移交', exact: true }).last().click();
   await guest.locator('.room-controls > summary').click();
   await expect(guest.getByLabel('选择新房主')).toBeVisible();

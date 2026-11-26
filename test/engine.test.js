@@ -1348,7 +1348,7 @@ test('首日竞选前不结算夜间死亡：死者仍可上警（面杀主流�
 
   skipSheriff(room);
   assert.equal(room._playerAt(victim).alive, false, '竞选结束后才结算昨夜死亡');
-  assert.ok(room.news.some(n => n.text.includes(`${victim}号 在昨夜死亡`)));
+  assert.ok(room.news.some(n => n.nightDeathSeat === victim && n.text === `${room._playerAt(victim).name}（${victim}号） 在昨夜死亡`));
   restoreRandom();
 });
 
@@ -1362,7 +1362,7 @@ test('关闭 sheriffBeforeDeath：先公布死讯，再竞选警长', () => {
 
   assert.equal(room.phase, 'dayStart');
   assert.equal(room._playerAt(victim).alive, false, '关闭新规则后，天亮即结算死亡');
-  assert.ok(room.news.some(n => n.text.includes(`${victim}号 在昨夜死亡`)));
+  assert.ok(room.news.some(n => n.nightDeathSeat === victim && n.text === `${room._playerAt(victim).name}（${victim}号） 在昨夜死亡`));
   assert.ok(!room.news.some(n => n.text.includes('首日先进行警长竞选')));
 
   room.advance();

@@ -11,6 +11,7 @@ import { targetPicker } from '../components/targetPicker.js';
 import { roleCard } from '../components/roleCard.js';
 import { peekButton, hidePeek } from '../components/rolePeek.js';
 import { newsPanel } from '../components/news.js';
+import { playerLabel, seatLabel } from '../playerLabel.js';
 import { judgePanel } from '../components/judgePanel.js';
 import {
   speakNew, isNarrator, unlock as unlockVoice,
@@ -69,6 +70,7 @@ function actionsPanel(s) {
   const priv = s.private || {};
   const phase = s.phase;
   if (me.isJudge) return [el('p', { class: 'hint' }, '在座位图下方推进阶段，详细信息与手动干预在更多面板。')];
+  const label = seat => seatLabel(s.players, seat);
   const aliveTargets = s.players.filter((p) => p.name && p.alive);
   const out = [];
 
@@ -83,9 +85,12 @@ function actionsPanel(s) {
 
   // 「结束本阶段」按钮：只有当前操作人看得到（引擎判定，见 canEndPhase）。
   // 没有倒计时之后，这是主要的推进方式，所以做得显眼且始终在操作区底部。
-  const endButton = (label) => out.push(el('button', {
+  const endButton = (label, guard) => out.push(el('button', {
     class: 'btn-primary btn-big end-phase-btn', type: 'button',
-    click: () => emit('endPhase'),
+    click: async () => {
+      if (guard && !await guard()) return;
+      return emit('endPhase');
+    },
   }, label));
 
   // 预言家：本夜的查验结果常驻显示。
@@ -95,7 +100,7 @@ function actionsPanel(s) {
     out.push(el('div', { class: 'card glass col' }, [
       el('div', { class: 'panel-title' }, '本夜查验'),
       el('div', { class: 'seer-result ' + priv.seerResult.camp }, [
-        el('span', { class: 'sr-seat' }, `${priv.seerResult.seat}号`),
+        el('span', { class: 'sr-seat' }, `${label(priv.seerResult.seat)}`),
         el('span', { class: 'sr-camp' }, priv.seerResult.camp === 'wolf' ? '狼人' : '好人'),
       ]),
     ]));
@@ -116,7 +121,7 @@ function actionsPanel(s) {
         '选择要带走的人',
         async (seat) => {
           const yes = await confirmDialog('确认自爆？',
-            `自爆并带走 ${seat}号，当天白天立刻结束。此操作不可撤销。`, { confirmText: '自爆' });
+            `自爆并带走 ${label(seat)}，当天白天立刻结束。此操作不可撤销。`, { confirmText: '自爆' });
           if (yes) return emit('blast', { target: seat });
           return { cancelled: true };
         },
@@ -175,11 +180,11 @@ function actionsPanel(s) {
 
     case 'nightGuard':
       if (me.role === 'guard' && me.alive && priv.guardActed) {
-        section('守护已提交', el('p', { class: 'hint' }, `已守护 ${priv.guardTarget}号，等待法官推进。`));
+        section('守护已提交', el('p', { class: 'hint' }, `已守护 ${label(priv.guardTarget)}，等待法官推进。`));
       } else if (me.role === 'guard' && me.alive) {
         section('选择今晚守护的目标', targetPicker(
           aliveTargets.filter((t) => t.seat !== priv.guardLastTarget),
-          priv.guardLastTarget ? `不能连续两晚守护同一人（昨晚守了 ${priv.guardLastTarget}号）` : '守护可挡下狼刀',
+          priv.guardLastTarget ? `不能连续两晚守护同一人（昨晚守了 ${label(priv.guardLastTarget)}）` : '守护可挡下狼刀',
           (seat) => emit('nightAction', { type: 'guardProtect', target: seat }),
         ));
         if (priv.canEndPhase) endButton('结束本阶段');
@@ -197,7 +202,7 @@ function actionsPanel(s) {
             class: 'wolf-tally-item'
               + (n >= (priv.wolfNeed || 99) ? ' passed' : '')
               + (priv.wolfVote === seat ? ' mine' : ''),
-          }, `${seat}号 ${n}票`))));
+          }, `${label(seat)} ${n}票`))));
         }
 
         if (priv.wolfRevote) {
@@ -214,7 +219,7 @@ function actionsPanel(s) {
           {
             selected: priv.wolfVote || 0,
             confirmPick: (seat, returnFocus) => confirmDialog('确认狼队投票？',
-              `选择 ${seat}号。全员投票且达到多数后，本阶段会自动结束。`,
+              `选择 ${label(seat)}。全员投票且达到多数后，本阶段会自动结束。`,
               { danger: false, confirmText: '确认投票', returnFocus }),
           },
         ));
@@ -230,7 +235,7 @@ function actionsPanel(s) {
         const w = priv.witch || {};
         const body = el('div', { class: 'col' });
         body.appendChild(el('div', { class: 'hint ' + (w.killTarget ? 'bad-text' : '') },
-          w.killTarget ? `今夜 ${w.killTarget}号 被狼人杀害` : '今夜无人被刀'));
+          w.killTarget ? `今夜 ${label(w.killTarget)} 被狼人杀害` : '今夜无人被刀'));
 
         if (w.actedTonight) {
           body.appendChild(el('div', { class: 'hint' }, '本夜已使用一种药水，请等待法官推进。'));
@@ -241,7 +246,7 @@ function actionsPanel(s) {
           body.appendChild(el('button', {
             class: 'btn-primary', type: 'button',
             click: () => emit('nightAction', { type: 'witchAct', kind: 'heal', target: w.killTarget }),
-          }, `使用解药救 ${w.killTarget}号`));
+          }, `使用解药救 ${label(w.killTarget)}`));
         } else if (w.healLeft) {
           body.appendChild(el('div', { class: 'hint muted' }, '解药今夜无法使用'));
         } else {
@@ -254,14 +259,14 @@ function actionsPanel(s) {
             aliveTargets.filter((t) => t.seat !== me.seat), '',
             (seat) => emit('nightAction', { type: 'witchAct', kind: 'poison', target: seat }),
             { confirmPick: (seat, returnFocus) => confirmDialog('确认使用毒药？',
-              `对 ${seat}号使用毒药后不可撤销，本夜也不能再用解药。`,
+              `对 ${label(seat)}使用毒药后不可撤销，本夜也不能再用解药。`,
               { confirmText: '确认用毒', returnFocus }) },
           ));
         } else {
           body.appendChild(el('div', { class: 'hint muted' }, '毒药已用完'));
         }
         section('女巫行动', body);
-        if (priv.canEndPhase) endButton('结束本阶段');
+        if (priv.canEndPhase) endButton('本夜不用药');
       } else waiting('等待女巫结束…');
       break;
     }
@@ -278,7 +283,7 @@ function actionsPanel(s) {
           const r = priv.seerResult;
           // 只靠左侧那条细边区分阵营，不做大面积配色
           body.appendChild(el('div', { class: 'seer-result ' + r.camp }, [
-            el('span', { class: 'sr-seat' }, `${r.seat}号`),
+            el('span', { class: 'sr-seat' }, `${label(r.seat)}`),
             el('span', { class: 'sr-camp' }, r.camp === 'wolf' ? '狼人' : '好人'),
           ]));
           body.appendChild(el('div', { class: 'hint' }, '今晚已查验，可以点「结束本阶段」'));
@@ -296,7 +301,7 @@ function actionsPanel(s) {
           body.appendChild(el('div', { class: 'seer-history' }, history.map((h) => el('span', {
             class: 'seer-chip',
           }, [
-            el('span', { class: 'sc-seat' }, `${h.seat}号`),
+            el('span', { class: 'sc-seat' }, `${label(h.seat)}`),
             el('span', { class: 'sc-camp' }, h.camp === 'wolf' ? '狼人' : '好人'),
           ]))));
         }
@@ -332,10 +337,10 @@ function actionsPanel(s) {
       const candidates = s.phaseState.candidates || [];
       section('警长竞选 · 发言', el('div', { class: 'col' }, [
         el('div', { class: 'speaker-line' }, [
-          el('span', { class: 'speaker-seat' }, `${s.phaseState.speakerSeat}号`),
+          el('span', { class: 'speaker-seat' }, `${label(s.phaseState.speakerSeat)}`),
           el('span', {}, '正在发言'),
         ]),
-        el('div', { class: 'hint' }, `警上候选人：${candidates.map((c) => `${c}号`).join('、')}`),
+        el('div', { class: 'hint' }, `警上候选人：${candidates.map((c) => `${label(c)}`).join('、')}`),
         priv.onPodium
           ? el('button', { class: 'btn-danger', type: 'button', click: () => emit('declare', { onPodium: false }) }, '退水（放弃竞选）')
           : el('div', { class: 'hint muted' }, '等待候选人发言…'),
@@ -354,7 +359,7 @@ function actionsPanel(s) {
           // 一经投出不可修改：只回显结果，不再给选择器
           section(isPk ? '平票PK · 已投票' : '已投票', el('div', { class: 'col' }, [
             el('div', { class: 'voted-lock' }, priv.sheriffMyVote
-              ? `你已投给 ${priv.sheriffMyVote}号`
+              ? `你已投给 ${label(priv.sheriffMyVote)}`
               : '你已弃票'),
             el('div', { class: 'hint muted' }, '投票不可修改，等待其他人…'),
           ]));
@@ -377,7 +382,10 @@ function actionsPanel(s) {
         el('div', { class: 'hint' }, '房主可点击座位标记发言者；也可自由讨论，结束后由房主发起放逐投票'),
       ]));
       if (priv.canEndSpeech) out.push(el('button', { class: 'btn-primary', type: 'button', click: () => emit('finishSpeech') }, '结束我的发言'));
-      if (priv.canEndPhase) endButton('进入放逐投票');
+      if (priv.canEndPhase) endButton('进入放逐投票', s.phaseState.speakerSeat
+        ? () => confirmDialog('现在开始放逐投票？', `${label(s.phaseState.speakerSeat)}仍在发言。进入投票后，本轮发言结束。`,
+          { danger: false, confirmText: '开始投票' })
+        : null);
       break;
 
     case 'dayVote':
@@ -391,7 +399,7 @@ function actionsPanel(s) {
         if (priv.hasVoted) {
           // 一经投出不可修改：只回显结果，不再给选择器
           section(isPk ? '放逐PK · 已投票' : '已投票', el('div', { class: 'col' }, [
-            el('div', { class: 'voted-lock' }, priv.myVote ? `你已投给 ${priv.myVote}号` : '你已弃票'),
+            el('div', { class: 'voted-lock' }, priv.myVote ? `你已投给 ${label(priv.myVote)}` : '你已弃票'),
             el('div', { class: 'hint muted' }, '投票不可修改，等待其他人…'),
           ]));
         } else {
@@ -399,7 +407,7 @@ function actionsPanel(s) {
             // 不能投给自己（服务端也会拒绝，这里不给出这个选项）
             targets.filter((p) => p.seat !== me.seat && !p.idiotFlipped),
             isPk
-              ? `平票候选人：${pkCands.map((c) => `${c}号`).join('、')}（仍平票则平安日）`
+              ? `平票候选人：${pkCands.map((c) => `${label(c)}`).join('、')}（仍平票则平安日）`
               : '票数最高者被放逐，平票会进入 PK · 投出后不可修改',
             (seat) => emit('exileVote', { target: seat }),
             {
@@ -425,7 +433,7 @@ function actionsPanel(s) {
         ]));
         endButton('结束发言');
       } else {
-        waiting(`${s.phaseState.seat}号 正在发表遗言…`);
+        waiting(`${label(s.phaseState.seat)} 正在发表遗言…`);
       }
       break;
 
@@ -491,7 +499,7 @@ function gameOverCard(s) {
       ? el('button', {
         class: 'btn-primary btn-big', type: 'button',
         click: () => net.emit('restart').catch((e) => toast(e.message, true)),
-      }, '回到房间，再来一局')
+      }, '再来一局')
       : el('div', { class: 'hint' }, '等待房主回到房间开启下一局'),
     el('div', { class: 'hint' }, '回到房间后座位会清空，大家重新选座'),
     el('button', { class: 'btn-ghost btn-big', type: 'button', click: leaveRoom }, '退出房间'),
@@ -503,7 +511,10 @@ function toggleSheet(root, id = '', trigger) {
   const previousSheet = activeSheet;
   activeSheet = id;
   if (trigger) sheetReturnFocus = trigger;
-  for (const mask of root.querySelectorAll('.game-sheet-mask')) mask.hidden = mask.dataset.sheet !== id;
+  for (const mask of root.querySelectorAll('.game-sheet-mask')) {
+    mask.hidden = mask.dataset.sheet !== id;
+    mask.classList.toggle('sheet-enter', !mask.hidden && previousSheet !== id);
+  }
   for (const node of root.querySelectorAll('.game-topbar, .game-board')) {
     if (id) node.setAttribute('inert', '');
     else node.removeAttribute('inert');
@@ -537,26 +548,50 @@ function gameSheet(root, id, title, content) {
   return mask;
 }
 
-function compactStatus(s, selection, information) {
+function compactStatus(s, selection, information, canAct) {
+  const label = seat => seatLabel(s.players, seat);
   const p = s.private || {};
   let text = information.map(node => node.querySelector?.('.voted-lock, .wait-text, .hint')?.textContent).filter(Boolean).at(-1) || '等待其他玩家操作';
   if (selection) text = `${selection.label} · 点击亮起的座位`;
+  if (selection && ['dayVote', 'votePk', 'sheriffVote', 'sheriffPk'].includes(s.phase)) {
+    text = '轮到你投票 · 点击亮起的座位';
+  }
   if (s.phase === 'roleReveal') text = p.roleReady ? '身份已确认，等待其他人' : '记住身份后，点击下方确认';
-  if (s.phase === 'nightWolves' && s.me.isWolf) text = `狼人已选 ${p.wolfConfirmed || '0/0'} · 过半需 ${p.wolfNeed || '?'} 票${p.wolfRevote ? ' · 请重新选择' : ''}`;
+  if (s.phase === 'nightWolves' && selection && s.me.isWolf) text = p.wolfVote
+    ? `已选 ${label(p.wolfVote)} · 本轮结束前可改选`
+    : p.wolfRevote ? '上一轮未过半 · 请选择新的目标' : '点亮起的座位选择目标，再确认投票';
   if (s.phase === 'nightWitch' && s.me.role === 'witch' && s.me.alive) {
     const w = p.witch || {};
-    text = w.actedTonight ? '本夜已使用药水，等待推进' : `${w.killTarget ? `今夜 ${w.killTarget}号被刀` : '今夜无人被刀'} · ${w.poisonLeft ? '点座位选择用毒目标' : '毒药已用尽'}`;
+    text = w.actedTonight ? '本夜已使用药水，等待推进' : `${w.killTarget ? `今夜 ${label(w.killTarget)}被刀` : '今夜无人被刀'} · ${w.poisonLeft ? '点座位选择用毒目标' : '毒药已用尽'}`;
   }
-  if (s.phase === 'dayTalk') text = s.phaseState.speakerSeat ? `${s.phaseState.speakerSeat}号正在发言` : '自由讨论中 · 房主可点座位标记发言者';
+  if (s.phase === 'dayStart') {
+    const announcements = (s.news || []).filter(n => n.day === s.day);
+    const deaths = announcements.map(n => n.nightDeathSeat ?? Number(/^(\d+)号 在昨夜死亡$/.exec(n.text)?.[1])).filter(Boolean);
+    text = deaths.length ? `昨夜出局 · ${deaths.map(label).join('、')}` : announcements.at(-1)?.text || '天亮了，等待公布昨夜结果';
+  }
+  if (s.phase === 'dayTalk') text = p.canEndSpeech ? '现在轮到你发言，说完后点结束'
+    : s.phaseState.speakerSeat ? `${label(s.phaseState.speakerSeat)}正在发言`
+    : selection ? '自由讨论中 · 点座位指定发言人' : '自由讨论中，等待房主发起投票';
   if (s.gameOver) text = s.gameOver.winners === 'wolf' ? '本局结束 · 狼人阵营获胜' : '本局结束 · 好人阵营获胜';
   const seerResult = information.map(node => node.querySelector?.('.seer-result')).find(Boolean);
   seerResult?.remove();
   for (const node of information) for (const speaker of node.querySelectorAll?.('.speaker-seat') || []) speaker.className = 'speaker-detail-seat';
-  return el('section', { class: 'game-actions compact-actions', 'aria-label': '本阶段操作', 'aria-live': 'polite' }, [
+  const completed = s.phase === 'roleReveal' ? p.roleReady
+    : ['dayVote', 'votePk'].includes(s.phase) ? p.hasVoted
+      : ['sheriffVote', 'sheriffPk'].includes(s.phase) ? p.sheriffHasVoted
+        : s.phase === 'nightWitch' ? p.witch?.actedTonight
+          : s.phase === 'nightGuard' ? p.guardActed : false;
+  const stateLabel = s.gameOver ? '本局结果' : p.canEndSpeech ? '轮到你发言' : canAct ? '可操作'
+    : completed ? '已提交' : !s.me.alive && !s.me.isJudge ? '观战中' : '等待中';
+  return el('section', {
+    class: 'game-actions compact-actions' + (canAct ? ' can-act' : completed ? ' action-complete' : ''),
+    'aria-label': '本阶段操作', 'aria-live': 'polite',
+  }, [
+    el('span', { class: 'action-state-label' }, stateLabel),
     el('p', { class: 'action-status' }, text),
-    s.phase === 'sheriffSpeech' ? el('div', { class: 'speaker-line' }, [el('span', { class: 'speaker-seat' }, `${s.phaseState.speakerSeat}号`), '正在发言']) : null,
+    s.phase === 'sheriffSpeech' ? el('div', { class: 'speaker-line' }, [el('span', { class: 'speaker-seat' }, `${label(s.phaseState.speakerSeat)}`), '正在发言']) : null,
     seerResult || null,
-    s.phase === 'nightWolves' && s.me.isWolf && p.wolfTally?.length ? el('div', { class: 'wolf-tally' }, p.wolfTally.map(([seat, n]) => el('span', { class: 'wolf-tally-item' }, `${seat}号 ${n}票`))) : null,
+    s.phase === 'nightWolves' && s.me.isWolf && p.wolfTally?.length ? el('div', { class: 'wolf-tally' }, p.wolfTally.map(([seat, n]) => el('span', { class: 'wolf-tally-item' }, `${label(seat)} ${n}票`))) : null,
   ]);
 }
 
@@ -567,11 +602,15 @@ export function renderGame(root) {
   const me = s.me;
   const priv = s.private || {};
   const phase = s.phase;
-  const changed = phase !== lastPhase || (!!s.phaseId && s.phaseId !== lastStage);
+  const phaseChanged = phase !== lastPhase;
+  const changed = phaseChanged || (!!s.phaseId && s.phaseId !== lastStage);
   if (changed) {
     lastPhase = phase; lastStage = s.phaseId || phase; boardMode = '';
-    activeSheet = ''; sheetReturnFocus = null;
-    dismissDialog(); hidePeek(); window.scrollTo(0, 0);
+    if (phaseChanged || activeSheet === 'details' || activeSheet === 'progress') {
+      activeSheet = ''; sheetReturnFocus = null;
+    }
+    dismissDialog();
+    if (phaseChanged) { hidePeek(); window.scrollTo(0, 0); }
   }
   const isJudge = !!(me.isJudge && s.judge?.players);
   const judgeNode = isJudge ? judgePanel(s, emit) : el('div', { hidden: true });
@@ -603,6 +642,7 @@ export function renderGame(root) {
   const collectButtons = node => {
     for (const child of [...node.children]) {
       if (child.tagName === 'BUTTON' && !child.classList.contains('target-chip') && !child.classList.contains('picker-mode')) {
+        if (s.gameOver && !child.classList.contains('btn-primary')) continue;
         child.remove(); quickButtons.push(child);
       } else collectButtons(child);
     }
@@ -618,21 +658,35 @@ export function renderGame(root) {
     if (advance) { advance.remove(); quickButtons.push(advance); }
   }
   const activity = s.activity || { label: s.judgeMode ? '等待法官推进' : PHASE_NAME[phase], seats: [], pending: [], completed: 0, total: 0 };
-  const pending = activity.pending.map(seat => `${seat}号${s.players.find(p => p.seat === seat)?.connected === false ? '（离线）' : ''}`);
+  const pendingPlayers = activity.pending.map(seat => {
+    const player = s.players.find(p => p.seat === seat);
+    return { seat, name: playerLabel(player, seat), offline: player?.connected === false };
+  });
+  const pending = pendingPlayers.map(({ name, offline }) => `${name}${offline ? '（离线）' : ''}`);
+  const pendingPreview = pending.slice(0, 3).join('、') + (pending.length > 3 ? `等 ${pending.length} 人` : '');
   const progress = activity.total ? `已完成 ${activity.completed}/${activity.total}` : activity.label;
-  const wait = pending.length ? `等待：${pending.join('、')}`
-    : activity.total && activity.completed >= activity.total ? (s.judgeMode ? '已完成操作，等待法官推进' : '已完成，正在进入下一阶段') : s.judgeMode ? '等待法官确认推进' : activity.label;
+  const wait = activity.total && activity.completed >= activity.total
+    ? (s.judgeMode ? '已完成操作，等待法官推进' : '已完成，正在进入下一阶段')
+    : s.judgeMode ? '等待法官确认推进' : activity.label;
   const oldView = root.children[0];
   const sameView = oldView?.classList.contains('game-view');
   const atNight = isNightPhase(phase);
-  const topbar = el('header', { class: 'game-topbar glass' + (atNight ? ' stage-night' : '') }, [
-    el('span', { class: 'stage-emblem' }, icon(atNight ? 'moon' : 'sun')),
-    el('div', { class: 'gt-left' }, [
-      el('h1', { class: 'gt-phase' }, PHASE_NAME[phase] || phase),
-      el('span', { class: 'gt-day' }, `${s.day ? `第 ${s.day} ${atNight ? '夜' : '天'}` : '开局准备'} · ${s.players.filter(p => p.name && p.alive).length} 人存活${s.sheriff ? ` · 警长 ${s.sheriff}号` : ''}`),
+  const remaining = s.players.filter(p => p.name && p.alive).length;
+  const sheriffName = s.sheriff ? seatLabel(s.players, s.sheriff) : '';
+  const result = s.gameOver?.winners;
+  const topbar = el('header', { class: 'game-topbar glass' + (atNight ? ' stage-night' : '') + (phaseChanged ? ' stage-enter' : '') + (result ? ' victory-banner ' + result : '') }, [
+    el('div', { class: 'game-context' }, [
+      el('span', { class: 'gt-day' }, [
+        icon(atNight ? 'moon' : 'sun'),
+        s.day ? `第 ${s.day} ${atNight ? '夜' : '天'} · ${result ? '游戏结束' : remaining + ' 人存活'}` : '开局准备',
+        sheriffName && !result ? el('span', { class: 'game-sheriff' }, `警长 ${sheriffName}`) : null,
+      ]),
+      !result && !isJudge && (phase !== 'roleReveal' || priv.roleReady) ? peekButton(() => net.state) : null,
     ]),
-    !isJudge && (phase !== 'roleReveal' || priv.roleReady) ? peekButton(s) : null,
+    el('h1', { class: 'gt-phase' }, result ? (result === 'wolf' ? '狼人阵营获胜' : '好人阵营获胜') : (PHASE_NAME[phase] || phase)),
   ]);
+  // Stable header on unrelated progress pushes; holding the identity button still reads the latest snapshot.
+  topbar._renderKey = JSON.stringify([phase, s.day, result, sheriffName, remaining, isJudge, priv.roleReady]);
   const records = replayPanel(s);
   records.open = true;
   const sheetButton = (id, name, glyph, label, badge) => el('button', {
@@ -640,29 +694,31 @@ export function renderGame(root) {
     click: event => toggleSheet(root, id, event.currentTarget),
   }, [icon(glyph), el('span', {}, label), badge ? el('span', { class: 'tool-badge' }, badge) : null]);
   const grid = seatGrid(s.players, { me, showRole: true, activity, selection });
+  grid.classList.add('felt-table');
   grid.style.gridTemplateRows = `repeat(${Math.ceil(s.players.length / (s.players.length > 9 ? 4 : 3))}, minmax(0, 1fr))`;
   // 身份确认阶段用身份牌占据座位区域，确认后立即恢复整张座位图。
   if (identityCard) grid.hidden = true;
-  const board = el('section', { class: 'card glass game-board' + (identityCard ? ' revealing' : ''), 'aria-label': '对局座位图' }, [
-    el('div', { class: 'board-heading' }, [
-      el('h2', {}, [icon('board'), identityCard ? '我的身份牌' : '全场座位']),
-      el('span', { class: 'pill' }, me.seat ? `${me.seat}号位 · 我` : '法官席'),
-    ]),
-    el('div', { class: 'round-progress', role: 'status', 'aria-live': 'polite' }, [
+  const board = el('section', { class: 'card glass game-board' + (identityCard ? ' revealing' : '') + (s.gameOver ? ' finished' : ''), 'aria-label': '对局座位图' }, [
+    !result ? compactStatus(s, selection, informationNodes, !!selection?.targets.length || quickButtons.some(btn => !btn.disabled)) : null,
+    identityCard, grid,
+    el('div', { class: 'board-sidebar' }, [
+      !result ? el('div', { class: 'round-progress', role: 'status', 'aria-live': 'polite' }, [
       el('div', { class: 'round-meter' }, [
         el('strong', {}, progress),
         activity.total ? el('span', { class: 'round-track', 'aria-hidden': 'true' },
           el('span', { style: `width:${Math.min(100, 100 * activity.completed / activity.total)}%` })) : null,
       ]),
-      wait !== progress ? el('span', { class: 'pending-seats', title: wait }, wait) : null,
-    ]),
-    identityCard, grid,
-    el('div', { class: 'board-sidebar' }, [
-      el('div', { class: 'action-dock' }, [
-        compactStatus(s, selection, informationNodes),
+      pending.length ? el('button', {
+        class: 'pending-link', type: 'button', 'data-opensheet': 'progress', 'aria-label': '查看待操作玩家',
+        click: event => toggleSheet(root, 'progress', event.currentTarget),
+      }, [el('span', { class: 'pending-seats' }, `等待：${pendingPreview}`), el('span', { class: 'pending-chevron', 'aria-hidden': 'true' }, '›')])
+        : wait !== progress ? el('span', { class: 'pending-seats' }, wait) : null,
+      ]) : null,
+      (quickButtons.length || selection?.danger || result) ? el('div', { class: 'action-dock' }, [
         selection?.danger ? el('button', { class: 'link-btn', type: 'button', click: () => { boardMode = ''; renderGame(root); } }, '取消特殊操作选择') : null,
         !selection?.danger && quickButtons.length ? el('div', { class: 'board-action-controls' }, quickButtons) : null,
-      ]),
+        result ? sheetButton('records', '查看复盘', 'records', '查看复盘') : null,
+      ]) : null,
       el('nav', { class: 'board-tools', 'aria-label': '对局工具' }, [
         sheetButton('records', '投票记录', 'records', '票型', s.voteHistory?.length),
         sheetButton('news', '播报记录', 'news', '播报'),
@@ -672,14 +728,25 @@ export function renderGame(root) {
     ]),
   ]);
   const controls = roomControls(s); controls.open = true;
+  const offlineBlockers = pendingPlayers.filter(p => p.offline).length;
   const sections = [
-    ['board', board, JSON.stringify([s.players, activity, priv, phase, s.phaseId, s.news, s.gameOver, s.voteHistory?.length, selection?.label, selection?.selected, selection?.targets, me])],
-    ['records', gameSheet(root, 'records', s.gameOver ? '本局复盘与票型' : '投票记录', records), JSON.stringify([s.voteHistory, s.replay, s.gameOver])],
+    ['board', board, JSON.stringify([s.players, activity, priv, phase, s.phaseId, s.phaseState, s.news, s.gameOver, s.voteHistory?.length, selection?.label, selection?.selected, selection?.targets, me])],
+    ['records', gameSheet(root, 'records', s.gameOver ? '本局复盘与票型' : '投票记录', records), JSON.stringify([s.voteHistory, s.replay, s.gameOver, s.players.map(p => p.name)])],
     ['news', gameSheet(root, 'news', '播报与阶段记录', newsPanel(s)), JSON.stringify(s.news)],
+    ['progress', gameSheet(root, 'progress', '待操作玩家', [
+      el('p', { class: 'hint' }, `${pending.length} 人待操作${offlineBlockers ? ` · ${offlineBlockers} 人离线` : ''}`),
+      el('ul', { class: 'pending-roster' }, pendingPlayers.map(({ name, offline }) =>
+        el('li', { class: offline ? 'is-offline' : '' }, `${name}${offline ? ' · 离线' : ''}`))),
+      offlineBlockers ? el('button', {
+        type: 'button', class: 'btn-ghost',
+        click: () => toggleSheet(root, 'details'),
+      }, '查看离线处理') : null,
+    ]), JSON.stringify(pendingPlayers)],
     ['details', gameSheet(root, 'details', '阶段详情与更多操作', [
+      offlineBlockers ? controls : null,
       el('section', { class: 'col game-details' }, informationNodes),
-      judgeNode, controls,
-    ]), JSON.stringify([phase, s.phaseId, me, priv, s.roleConfirm, s.gameOver, s.phaseState, s.judge, s.host, s.offlinePlayers, s.hostCandidates, s.canClaimHost])],
+      judgeNode, offlineBlockers ? null : controls,
+    ]), JSON.stringify([phase, s.phaseId, me, priv, s.roleConfirm, s.gameOver, s.phaseState, s.judge, s.host, s.offlinePlayers, s.hostCandidates, s.canClaimHost, offlineBlockers])],
   ];
   const oldMain = sameView ? oldView.querySelector?.('.game-main') : null;
   let main;
@@ -696,7 +763,8 @@ export function renderGame(root) {
       else if (!previous) oldMain.appendChild(node);
     }
     main = oldMain;
-    oldView.querySelector?.('.game-topbar')?.replaceWith(topbar);
+    const previousTopbar = oldView.querySelector?.('.game-topbar');
+    if (previousTopbar?._renderKey !== topbar._renderKey) previousTopbar?.replaceWith(topbar);
   } else {
     main = el('main', { class: 'game-main' }, sections.map(([id, node, key]) => { node.dataset.section = id; node._renderKey = key; return node; }));
     root.innerHTML = '';

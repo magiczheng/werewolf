@@ -1,5 +1,6 @@
 import { el, toast, confirmDialog } from '../ui.js';
 import { net, store } from '../net.js';
+import { playerLabel } from '../playerLabel.js';
 
 const expandedRooms = new Set();
 
@@ -8,18 +9,20 @@ export function roomControls(s) {
   const offline = s.offlinePlayers || [];
   const items = [];
   if (s.host) items.push(el('div', { class: 'hint' }, `房主：${s.host.name}${s.host.connected ? ' · 在线' : ' · 离线'}`));
-  if (offline.length) items.push(el('div', { class: 'hint' }, `离线成员：${offline.map(p => p.seat ? `${p.seat}号` : p.name).join('、')}。重连会恢复原座位。`));
+  if (offline.length) items.push(el('div', { class: 'hint' }, `离线成员：${offline.map(p => playerLabel(p)).join('、')}。重连会恢复原座位。`));
   if (s.canClaimHost) items.push(el('button', { class: 'btn-ghost', type: 'button', click: async () => {
     if (await confirmDialog('接任房主？', '原房主已离线满 60 秒，接任后由你推进公开阶段。', { danger: false, confirmText: '接任' })) return send('claimHost');
   } }, '接任离线房主'));
   if (s.me.isHost && s.hostCandidates?.length && (!s.judgeMode || !s.gameStarted)) {
     const select = el('select', { class: 'input', 'aria-label': '选择新房主' }, [
       el('option', { value: '' }, s.judgeMode ? '选择新法官' : '选择新房主'),
-      ...s.hostCandidates.map(p => el('option', { value: p.playerId }, `${p.seat ? p.seat + '号 ' : ''}${p.name}`)),
+      ...s.hostCandidates.map(p => el('option', { value: p.playerId }, playerLabel(p))),
     ]);
     items.push(el('div', { class: 'row' }, [select, el('button', { class: 'btn-ghost', type: 'button', click: async () => {
-      if (!select.value) return toast('请先选择成员', true);
-      if (await confirmDialog('移交房主？', s.judgeMode ? '对方将成为法官并离开玩家座位。' : '对方将获得开始游戏和推进公开阶段的权限。', { danger: false, confirmText: '移交' })) return send('transferHost', { playerId: select.value });
+      const candidate = s.hostCandidates.find(p => p.playerId === select.value);
+      if (!candidate) return toast('请先选择成员', true);
+      const change = s.judgeMode ? '将成为法官并离开玩家座位。' : '将获得开始游戏和推进公开阶段的权限。';
+      if (await confirmDialog('移交房主？', playerLabel(candidate) + change, { danger: false, confirmText: '移交' })) return send('transferHost', { playerId: candidate.playerId });
     } }, '移交') ]));
   }
   if (s.me.isHost && offline.length && s.gameStarted && !s.gameOver && !s.judgeMode) items.push(el('button', { class: 'btn-ghost', type: 'button', click: async () => {

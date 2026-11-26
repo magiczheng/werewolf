@@ -10,6 +10,26 @@
 .quick-guide button { align-self: flex-start; }
 .vote-record { display: flex; flex-direction: column; gap: 11px; padding: 15px 0; border-top: 1px solid var(--glass-brd); }
 .vote-record h3 { font-weight: 500; color: var(--accent-2); }
+.vote-groups { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.vote-group {
+  display: grid;
+  grid-template-columns: minmax(0, 2fr) auto minmax(0, 1fr) 3.5em;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  line-height: 1.55;
+  font-variant-numeric: tabular-nums;
+  background: #c9ad730a;
+  border: 1px solid var(--glass-brd);
+  border-radius: 8px;
+}
+.vote-voters { color: var(--ink); }
+.vote-voter { display: inline-block; max-width: 100%; overflow-wrap: anywhere; }
+.vote-arrow, .vote-weight, .vote-total { color: var(--ink-2); }
+.vote-weight, .vote-total { font-size: 11px; }
+.vote-target { color: var(--accent-2); overflow-wrap: anywhere; }
+.vote-total { text-align: right; white-space: nowrap; }
 .replay-timeline { border-top: 1px solid var(--glass-brd); padding-top: 22px; }
 .replay-timeline .news-item { font-size: 12px; }
 .target-chip { font: inherit; color: var(--ink); min-width: 0; }

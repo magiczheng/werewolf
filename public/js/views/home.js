@@ -2,7 +2,7 @@
 import { el, toast, clearDraft, setPending } from '../ui.js';
 import { net, session, setPlayerName, playerName, store } from '../net.js';
 import { buildSettingsForm } from '../components/settingsForm.js';
-import { atmosphere, pageIntro } from '../components/atmosphere.js';
+import { atmosphere, versionBadge } from '../components/atmosphere.js';
 import { DEFAULT_BOARDS, DEFAULT_RULES, DEFAULT_PLAYER_COUNT } from '../constants.js';
 
 let tab = null; // 'create' | 'join'，null 表示按 URL 推断
@@ -62,14 +62,12 @@ export function renderHome(root, { onLogout }) {
   function buildPanel() {
     const form = tab === 'join'
       ? el('form', { class: 'card glass col join-form', submit: (e) => { e.preventDefault(); joinRoom(); } }, [
-        el('div', { class: 'form-section-head' }, [el('span', { class: 'section-number' }, '↗'), el('div', {}, [el('h3', {}, '赴一场月夜邀约'), el('p', { class: 'hint' }, '输入朋友分享的 6 位房间号。')])]),
         el('div', { class: 'field' }, [el('label', { for: 'home-name' }, '昵称'), nameInput]),
         el('div', { class: 'field' }, [el('label', { for: 'home-room' }, '房间号'), joinCode]),
         joinBtn,
         el('div', { class: 'hint' }, '扫房主分享的二维码，或手动输入 6 位房间号'),
       ])
       : el('form', { class: 'card glass col create-form', submit: (e) => { e.preventDefault(); createRoom(); } }, [
-        el('div', { class: 'form-section-head' }, [el('span', { class: 'section-number' }, '01'), el('div', {}, [el('h3', {}, '设定今晚的游戏'), el('p', { class: 'hint' }, '选好人数和板子，就可以邀请朋友了。')])]),
         el('div', { class: 'field' }, [el('label', { for: 'home-name' }, '你的昵称'), nameInput]),
         settingsForm.root,
         el('div', { class: 'create-dock' }, [el('div', { class: 'create-dock-copy' }, [el('span', { class: 'eyebrow' }, 'READY FOR TONIGHT'), createSummary]), createBtn]),
@@ -97,7 +95,7 @@ export function renderHome(root, { onLogout }) {
       el('span', { class: 'account-name' }, `👤 ${acct.name || acct.email}`),
       el('button', { class: 'link-btn', type: 'button', click: onLogout }, '退出登录'),
     ]),
-    pageIntro('GATHER YOUR PEOPLE', '今晚，组一局。', '创建专属房间，或加入朋友的月夜邀约。'),
+    el('h1', { class: 'screen-title' }, tab === 'join' ? '加入房间' : '创建房间'),
     el('div', { class: 'tabs glass' }, [
       el('button', {
         class: 'tab' + (tab === 'create' ? ' active' : ''), type: 'button', 'aria-pressed': String(tab === 'create'),
@@ -109,6 +107,7 @@ export function renderHome(root, { onLogout }) {
       }, '加入房间'),
     ]),
     buildPanel(),
+    versionBadge(),
     ]),
   ]));
 

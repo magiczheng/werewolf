@@ -1,0 +1,294 @@
+/* Moonlit Club artwork, brass seats and felt table shared by lobby and play. */
+body {
+  --club-ink: #f0e1bd;
+  --club-gold: #d9af66;
+  --club-rim: #c49b525b;
+  --club-serif: "Songti SC", STSong, "Noto Serif CJK SC", serif;
+  background-color: #0b1712;
+}
+
+.screen-title, .unified-game .gt-phase, .sheet-heading h2, .modal-title, .go-camp {
+  font-family: var(--club-serif);
+  font-weight: 700;
+  color: var(--club-ink);
+  line-height: 1.2;
+  letter-spacing: .045em;
+}
+.screen-title {
+  margin: 0;
+  padding: 0 0 16px;
+  text-align: center;
+  font-size: clamp(28px, 5vw, 46px);
+  background: linear-gradient(90deg, transparent, #d4af607d, transparent) center bottom / 88% 1px no-repeat;
+}
+.edition { writing-mode: horizontal-tb; align-self: center; font-size: 10px; color: var(--ink-3); }
+.auth-view, .home-view .atmosphere { border-color: var(--club-rim); }
+.atmosphere {
+  background: #0b1712 url("../images/club-night.jpg") center 32% / cover no-repeat;
+}
+.auth-content {
+  background: radial-gradient(ellipse at top, #192e23, #0f2018 67%, #0a1611);
+  gap: 20px;
+}
+.auth-card { gap: 15px; }
+.auth-card .btn-big { margin-top: 6px; }
+.auth-switch { align-self: center; min-height: 44px; padding-inline: 20px; }
+.home-content { gap: 16px; }
+.home-content .screen-title { order: 0; }
+.home-content .account-bar { align-items: center; }
+.create-form, .join-form, .setup-disclosure, .room-controls, .lobby-config {
+  background: radial-gradient(ellipse at 30% 0%, #1d3528, #102219 82%);
+  border-color: var(--club-rim);
+}
+.auth-content .input, .home-content .input, .sheet-content .input {
+  background-color: #0c1d179e;
+  border-color: #bda06180;
+  border-radius: 12px;
+}
+.auth-content .input:focus, .home-content .input:focus, .sheet-content .input:focus {
+  border-color: #f1ce84;
+}
+.btn-primary, .unified-game .board-action-controls > .btn-primary {
+  color: #23190c;
+  border: 1px solid #efc77b;
+  background: linear-gradient(168deg, #f9e4ac, #e2b867 58%, #b28235);
+  box-shadow: inset 0 1px #fff8d391, inset 0 -2px #78501e55, 0 3px 10px #0005;
+}
+.btn-primary:disabled { box-shadow: none; }
+.unified-game .board-action-controls > .btn-ghost, .sheet-close, .lobby-code {
+  color: var(--club-ink);
+  background: #101f17;
+  border-color: var(--club-rim);
+}
+.lobby-intro { grid-column: 1 / -1; display: grid; justify-items: center; gap: 9px; }
+.lobby-title { width: 100%; font-size: clamp(26px, 5vw, 40px); }
+.lobby-intro .lobby-invite { display: inline-flex; align-items: center; min-height: 44px; padding-inline: 24px; border-radius: 20px; border-color: var(--club-rim); }
+.lobby-head { border-color: var(--club-rim); }
+.lobby-view > .seats-card { background: #0d1d16; border-color: var(--club-rim); }
+
+.felt-table {
+  --felt-center: #2c4f39;
+  --felt-edge: #0a2016;
+  --seat-token: clamp(32px, 10vw, 51px);
+  isolation: isolate;
+  position: relative;
+}
+.felt-table::before, .felt-table::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: 50%;
+}
+.felt-table::before {
+  inset: 0;
+  border: 3px double #c7a668bd;
+  background:
+    repeating-linear-gradient(132deg, #eff6d805 0 1px, transparent 1px 3px),
+    radial-gradient(ellipse, var(--felt-center), var(--felt-edge) 74%);
+  box-shadow: 0 8px 20px #0008, inset 0 0 0 4px #432d14ad, inset 0 0 38px #0009;
+}
+.felt-table::after { inset: 7px; border: 1px dashed #cfab5e70; }
+.felt-table.dense { --seat-token: clamp(25px, 8vw, 42px); }
+.lobby-view .felt-table { padding: 10px 8px; }
+.unified-game .felt-table { padding: 4px min(4vw, 24px); }
+.unified-game .felt-table.dense { padding-inline: 5px; }
+.lobby-view .felt-table .seat, .judge-roster .seat,
+.unified-game .game-board .felt-table .seat,
+.game-view:has(.stage-night) .game-board .felt-table .seat:not(.selectable):not(.selected) {
+  gap: 3px;
+  padding: 4px 2px;
+  border-color: transparent;
+  background: none;
+  box-shadow: none;
+}
+.lobby-view .felt-table .seat, .judge-roster .seat { min-height: 74px; }
+.lobby-view .felt-table.dense .seat { min-height: 67px; }
+.felt-table .seat-avatar, .felt-table .seat-role-art { display: none; }
+.lobby-view .felt-table .seat-vacant { display: block; }
+.lobby-view .felt-table .seat.empty .seat-vacant { display: inline; }
+.lobby-view .felt-table .seat-cta { display: none; }
+.lobby-view .felt-table .seat-status, .judge-roster .seat-status { font-size: 9px; line-height: 1.2; }
+.felt-table .seat .name { color: #f2ead5; max-width: 100%; }
+.lobby-view .felt-table .seat-no, .judge-roster .seat-no,
+.unified-game .game-board .felt-table .seat-no {
+  position: relative;
+  inset: auto;
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: var(--seat-token);
+  height: var(--seat-token);
+  border: 1px solid #efd394;
+  border-radius: 50%;
+  color: #251709;
+  font: 700 clamp(15px, 5.5vw, 26px) / 1 Georgia, serif;
+  background: radial-gradient(circle at 30% 18%, #f8e2aa, #c59a52 61%, #8d5e2b);
+  box-shadow: inset 0 0 0 2px #20190547, inset 0 1px 5px #ffe9b9, 0 3px 6px #0009;
+  transition: box-shadow .18s, filter .18s;
+}
+.lobby-view .felt-table .empty .seat-no, .judge-roster .empty .seat-no {
+  border-color: #d4b77777;
+  color: var(--club-ink);
+  background: #463d2359;
+  box-shadow: inset 0 0 0 2px #b489491c;
+}
+.felt-table .taken.dead .seat-no { filter: saturate(.4); }
+.felt-table .mine .seat-no { outline: 1px solid #edd09b; outline-offset: 2px; }
+.felt-table .activity-done .seat-no::after {
+  content: '✓';
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  display: grid;
+  place-items: center;
+  width: 15px;
+  height: 15px;
+  border: 1px solid #abd095;
+  border-radius: 50%;
+  color: #f2f6df;
+  background: #426c42;
+  font: 700 10px/1 var(--font);
+}
+.felt-table .activity-pending .seat-no::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #ffdb9d;
+  box-shadow: 0 0 7px #ffc46d;
+}
+.felt-table .seat.selectable .seat-no {
+  box-shadow: inset 0 0 0 2px #3f281866, 0 0 0 2px #f3c87737, 0 0 17px #f0b95951;
+}
+.felt-table .seat.selected .seat-no, .felt-table .seat.activity-speaking .seat-no {
+  box-shadow: inset 0 0 0 2px #42270880, 0 0 0 2px #ffe3a1, 0 0 18px #f5ac40a6;
+}
+.game-view:has(.stage-night) .felt-table { --felt-center: #214b42; --felt-edge: #09221f; }
+.game-view:has(.stage-night) .felt-table .seat.selectable .seat-no {
+  box-shadow: inset 0 0 0 2px #42270880, 0 0 0 2px #77d5c264, 0 0 16px #5cdacc50;
+}
+.game-view:has(.stage-night) .felt-table .seat.selected .seat-no {
+  box-shadow: inset 0 0 0 2px #42270880, 0 0 0 2px #98ffeb, 0 0 18px #4affd78c;
+}
+.unified-game .felt-table .seat-status { top: 6px; left: 6px; }
+.unified-game .felt-table .seat-status:not(:has(.off)) { display: none; }
+.unified-game .felt-table .seat .name { line-height: 1.2; }
+.unified-game .game-board.finished .felt-table { --seat-token: 26px; }
+.unified-game .game-board.finished .felt-table .seat-no { font-size: 16px; }
+.unified-game .game-board.finished .felt-table .seat .name { font-weight: 650; }
+
+.unified-game { max-width: 960px; }
+.unified-game .game-topbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  padding: 4px 12px 8px;
+  gap: 3px;
+  border: 0;
+  border-radius: 16px 16px 0 0;
+  background: radial-gradient(ellipse at top, #273527, #0e1f1700 80%);
+  box-shadow: none;
+}
+.game-context {
+  display: flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-bottom: 3px;
+  border-bottom: 1px solid #b89b5c52;
+}
+.unified-game .gt-day {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 3px 7px;
+  color: #e0d0aa;
+  font-size: 11px;
+}
+.game-context .line-icon { color: #ddb66a; }
+.game-sheriff { overflow-wrap: anywhere; }
+.unified-game .gt-phase { display: block; margin: 4px 0 0; font-size: clamp(25px, 7vw, 46px); text-align: center; }
+.unified-game .game-topbar.stage-night .gt-phase { color: #ddf0e3; }
+.unified-game .game-topbar.victory-banner {
+  border-bottom: 1px solid var(--club-rim);
+  background: linear-gradient(#0c1a1388 0%, #0b1a1477 48%, #0b1712 100%), url("../images/club-dawn.jpg") center 54% / cover;
+}
+.unified-game .victory-banner .gt-phase { padding: 8px 0; text-shadow: 0 2px 15px #0b140ece; }
+.unified-game .victory-banner.wolf { box-shadow: inset 0 -25px 30px #33160c83; }
+.unified-game .game-board, .game-view:has(.stage-night) .game-board {
+  border-color: var(--club-rim);
+  background: radial-gradient(ellipse at top, #152b1fd1, #0a1712d6);
+}
+.unified-game .game-board > .compact-actions {
+  flex: 0 0 auto;
+  max-width: 100%;
+  align-items: baseline;
+}
+.unified-game .game-board > .compact-actions .action-status { color: var(--club-ink); }
+.unified-game .round-progress { background: #14281d; border-color: var(--club-rim); }
+.unified-game .board-tools > button {
+  color: var(--club-ink);
+  background: #14251c;
+  border-color: var(--club-rim);
+}
+.unified-game .action-dock:has(> [data-opensheet="records"]) {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(140px, 100%), 1fr));
+}
+.unified-game .action-dock > [data-opensheet="records"] { min-height: 44px; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.game-sheet, .modal {
+  border-color: #d1a95d9c;
+  background:
+    repeating-linear-gradient(124deg, #d6dfcb04 0 1px, transparent 1px 4px),
+    radial-gradient(ellipse at 50% 0, #224331, #0d2118 80%);
+  box-shadow: 0 16px 65px #0009;
+}
+.sheet-heading h2, .modal-title { font-size: clamp(20px, 4vw, 27px); }
+.sheet-heading { border-color: var(--club-rim); }
+.vote-record h3 { color: var(--club-ink); font-weight: 650; }
+.vote-group, .pending-roster li { border-color: var(--club-rim); background: #101e1780; }
+.judge-roster { padding: 10px 8px; }
+.judge-roster .seat.dead { opacity: .85; }
+.judge-panel > .hint { text-align: center; }
+
+@media (max-width: 720px) {
+  .auth-view {
+    min-height: calc(100dvh - 30px - var(--safe-top) - var(--safe-bottom));
+    background: linear-gradient(180deg, #08150e10 0, #09160f33 28%, #0b1911 61%),
+      #0b1712 url("../images/club-night.jpg") center top / cover no-repeat;
+  }
+  .auth-view .atmosphere, .home-view .atmosphere { display: none; }
+  .auth-content { background: none; justify-content: flex-end; flex: 1; padding: clamp(140px, 26dvh, 245px) 24px 22px; gap: 14px; }
+  .auth-content .screen-title { font-size: clamp(31px, 10vw, 45px); }
+  .home-view { padding-top: calc(10px + var(--safe-top)); }
+  .home-content .account-bar { padding-bottom: 6px; }
+  .lobby-title { padding-bottom: 10px; }
+  .lobby-view > .lobby-launch { grid-template-columns: 1fr; gap: 7px; border-color: var(--club-rim); }
+  .lobby-launch.is-waiting .sticky-cta { display: block; }
+  .lobby-launch .launch-caption { display: flex; justify-content: center; flex-wrap: wrap; }
+  .lobby-code > span { display: inline; }
+  .game-sheet, #app:has(.game-view) ~ #modal-root .modal { border-radius: 24px 24px 13px 13px; }
+}
+
+@media (min-width: 860px) {
+  .unified-game .game-board:not(.revealing) { grid-template: auto minmax(0, 1fr) / minmax(0, 1fr) minmax(220px, 29%); }
+  .unified-game .game-board > .compact-actions { grid-column: 1 / -1; }
+  .unified-game .game-board:not(.revealing) > .felt-table { grid-area: 2 / 1; }
+  .unified-game .game-board:not(.revealing) > .board-sidebar { grid-area: 2 / 2; align-self: start; }
+  .unified-game .game-board.finished > .felt-table, .unified-game .game-board.finished > .board-sidebar { grid-row: 1 / -1; }
+}
+
+@media (max-height: 680px) {
+  .unified-game .felt-table { --seat-token: 33px; }
+  .unified-game .felt-table.dense { --seat-token: 25px; }
+  .unified-game .game-board.finished .felt-table { --seat-token: 21px; }
+  .unified-game .game-topbar { padding-bottom: 4px; }
+  .unified-game .gt-phase { font-size: 25px; }
+  .game-context { min-height: 32px; }
+  .unified-game .victory-banner .gt-phase { padding: 3px 0; }
+}

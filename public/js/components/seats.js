@@ -1,6 +1,7 @@
 // 座位网格：大厅（可点击入座）与游戏内（存活/出局/翻牌）共用。
 import { roleArt } from './roleArt.js';
 import { el, setPending } from '../ui.js';
+import { playerLabel } from '../playerLabel.js';
 
 /**
  * @param {Array} players  snapshot 的 players（座位号 1..N）
@@ -74,7 +75,7 @@ export function seatGrid(players, opts = {}) {
     if (canChoose) bits.push(el('span', { class: 'seat-pick-hint', 'aria-hidden': 'true' }, '点击选择'));
     if (seat.idiotFlipped) bits.push(el('span', { class: 'idiot-tag' }, '翻牌免投'));
 
-    grid.appendChild(el(canChoose ? 'button' : 'div', { class: cls.join(' '), 'data-seat': seat.seat, ...(canChoose ? { type: 'button', 'aria-label': `${seat.seat}号 ${seat.name}，选择目标`, 'aria-pressed': 'false', click: event => opts.selection.choose(seat.seat, event.currentTarget) } : {}) }, bits));
+    grid.appendChild(el(canChoose ? 'button' : 'div', { class: cls.join(' '), 'data-seat': seat.seat, title: seat.name, ...(canChoose ? { type: 'button', 'aria-label': `${playerLabel(seat)}，选择目标`, 'aria-pressed': 'false', click: event => opts.selection.choose(seat.seat, event.currentTarget) } : {}) }, bits));
   }
 
   if (opts.selection) opts.selection.subscribe(({ selected, submitting }) => {

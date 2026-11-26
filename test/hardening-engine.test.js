@@ -107,10 +107,43 @@ test('夜间行动仅在结算复盘揭示；完成投票才公开票型', () =>
   room.submitNightAction('p6', { type: 'seerCheck', target: 1 });
   assert.equal(room.snapshot('p4').replay, null);
   room.judgeCommand('judge', 'endGame', { camp: 'good' });
-  assert.ok(room.snapshot('p4').replay.some(item => /查验 1号：狼人/.test(item.text)));
+  assert.ok(room.snapshot('p4').replay.some(item => item.text === '玩家6（6号） 预言家 · 查验 玩家1（1号）：狼人'));
   const next = setup(); next._enterDayVote(); next.exileVote('p1', 4); assert.equal(next.snapshot('p2').voteHistory.length, 0);
   for (let i = 2; i <= 9; i++) next.exileVote('p' + i, i === 4 ? 5 : 4);
   assert.equal(next.snapshot('p2').voteHistory.length, 1); assert.equal(next.voteHistory[0].ballots.length, 9);
+  assert.equal(next.voteHistory[0].namesBySeat[1], '房主');
+  assert.equal(next.voteHistory[0].namesBySeat[4], '玩家4');
+});
+
+test('恢复旧票型时补齐昵称，投票人与得票人离开后仍可复盘', () => {
+  const room = setup(true);
+  room._recordVotes('放逐投票', new Map([['p1', 2]]), true);
+  room.judgeCommand('judge', 'endGame', { camp: 'good' });
+  const data = JSON.parse(serializeRoom(room));
+  delete data.data.voteHistory[0].namesBySeat;
+  const restored = restoreRoom(JSON.stringify(data));
+  assert.equal(restored.leave('p1').ok, true);
+  assert.equal(restored.leave('p2').ok, true);
+  const archived = restoreRoom(serializeRoom(restored)).snapshot('judge').voteHistory[0];
+  assert.equal(archived.namesBySeat[1], '玩家1');
+  assert.equal(archived.namesBySeat[2], '玩家2');
+});
+
+test('恢复旧播报和复盘的昵称并保留死亡座位和历史编号', () => {
+  const room = setup();
+  room._news('2号 在昨夜死亡');
+  room._news('4、5号 平票，进入 PK');
+  room._news('房主已移交给 4号');
+  room.privateHistory.push({ text: '6号 预言家 · 查验 2号：狼人' });
+  const restored = restoreRoom(serializeRoom(room));
+  assert.deepEqual(restored.news.slice(-3).map(entry => entry.text), [
+    '玩家2（2号） 在昨夜死亡', '玩家4（4号）、玩家5（5号） 平票，进入 PK', '房主已移交给 4号',
+  ]);
+  assert.equal(restored.news.at(-3).nightDeathSeat, 2);
+  assert.equal(restored.news.at(-3).id, room.news.at(-3).id);
+  assert.equal(restored.history.at(-3).text, restored.news.at(-3).text);
+  assert.equal(restored.privateHistory.at(-1).text, '玩家6（6号） 预言家 · 查验 玩家2（2号）：狼人');
+  assert.deepEqual(restoreRoom(serializeRoom(restored)).news, restored.news);
 });
 
 test('放逐 PK 排除所有 PK 玩家，服务端与私有资格保持一致', () => {

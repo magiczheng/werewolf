@@ -2,7 +2,7 @@
 import { el, setPending } from '../ui.js';
 import { toast } from '../ui.js';
 import { net, session, setPlayerName } from '../net.js';
-import { atmosphere, pageIntro } from '../components/atmosphere.js';
+import { atmosphere, versionBadge } from '../components/atmosphere.js';
 
 let mode = 'login'; // 'login' | 'register'
 
@@ -84,26 +84,20 @@ export function renderAuth(root, onDone) {
   }, [
     ...fields,
     btn,
-    el('div', { class: 'hint' }, '创建或加入房间需要先登录，同一账号跨设备身份一致'),
-    testRow,
   ]);
 
   root.appendChild(el('div', { class: 'view auth-view view-enter' }, [
     atmosphere(),
     el('section', { class: 'auth-content' }, [
-    pageIntro('YOUR SEAT IS WAITING', mode === 'login' ? '欢迎回到月夜' : '成为月夜的一员', '落座之前，先让我们认识一下。'),
-    el('div', { class: 'tabs glass' }, [
-      el('button', {
-        class: 'tab' + (mode === 'login' ? ' active' : ''), type: 'button', 'aria-pressed': String(mode === 'login'),
-        click: () => { mode = 'login'; onDone(); },
-      }, '登录'),
-      el('button', {
-        class: 'tab' + (mode === 'register' ? ' active' : ''), type: 'button', 'aria-pressed': String(mode === 'register'),
-        click: () => { mode = 'register'; onDone(); },
-      }, '注册'),
-    ]),
-    form,
-    el('div', { class: 'auth-footnote' }, '✧  面对面交锋，让聚会回归在场'),
+      el('h1', { class: 'screen-title' }, mode === 'login' ? '月夜俱乐部' : '注册账号'),
+      form,
+      el('button', { class: 'link-btn auth-switch', type: 'button', click: () => {
+        if (busy) return;
+        mode = mode === 'login' ? 'register' : 'login';
+        onDone();
+      } }, mode === 'login' ? '注册账号' : '返回登录'),
+      testRow,
+      versionBadge(),
     ]),
   ]));
 }

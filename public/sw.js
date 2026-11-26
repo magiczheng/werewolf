@@ -2,7 +2,7 @@
 // APIs and Socket.IO are never cached. Offline mode only restores the shell.
 const CACHE = 'werewolf-hardening-v4';
 const SHELL = ['/', '/css/style.css', '/css/base.css', '/css/theme.css', '/css/roles.css', '/css/rooms.css', '/css/experience.css',
-  '/css/tokens.css', '/images/moonlit-forest.svg', '/manifest.json'];
+  '/css/tokens.css', '/css/clubhouse.css', '/images/club-night.jpg', '/images/club-dawn.jpg', '/manifest.json'];
 self.addEventListener('install', event => {
   event.waitUntil(caches.open(CACHE).then(cache => Promise.allSettled(SHELL.map(path => cache.add(path)))).then(() => self.skipWaiting()));
 });

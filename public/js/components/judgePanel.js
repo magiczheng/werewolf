@@ -1,7 +1,8 @@
 // 法官面板：全场身份、夜间操作汇总、投票明细、手动结算。
-import { roleArt } from './roleArt.js';
 import { el } from '../ui.js';
 import { PHASE_NAME } from '../constants.js';
+import { playerLabel, seatLabel } from '../playerLabel.js';
+import { seatGrid } from './seats.js';
 
 // 选中的座位跨重建保留：法官每点一次「判死/复活」都会触发整页重渲染，
 // 若存在组件内部状态里，选中的座位会每次跳回第一项。
@@ -9,38 +10,30 @@ let selectedSeat = '';
 
 export function judgePanel(s, emit) {
   const j = s.judge;
-  const table = el('table', { class: 'judge-table' }, [
-    el('thead', {}, el('tr', {}, ['号', '昵称', '身份', '状态', '徽'].map((h) => el('th', {}, h)))),
-    el('tbody', {}, j.players.filter((p) => p.name).map((p) => {
-      const isWolf = p.role === 'wolf' || p.role === 'whiteWolfKing';
-      return el('tr', { class: p.alive ? '' : 'dead' }, [
-        el('td', { class: 'jt-seat' }, p.seat ? `${p.seat}` : '—'),
-        el('td', {}, p.name ? p.name : '—'),
-        el('td', {}, p.roleName ? el('div', { class: 'judge-role' }, [roleArt(p.role, { className: 'judge-role-art' }), el('span', { class: 'role-tag ' + (isWolf ? 'wolf' : 'good') }, p.roleName)]) : '—'),
-        el('td', {}, p.alive ? el('span', { class: 'alive-tag' }, '存活') : el('span', { class: 'dead-tag' }, '出局')),
-        el('td', {}, p.isSheriff ? '🛡' : ''),
-      ]);
-    })),
-  ]);
+  const label = seat => seatLabel(j.players, Number(seat));
+  const roster = seatGrid(j.players.map(player => ({
+    ...player, revealed: true, connected: s.players.find(p => p.seat === player.seat)?.connected,
+  })), { showRole: true });
+  roster.classList.add('felt-table', 'judge-roster');
 
   // ---------- 夜间/投票汇总 ----------
   const info = [];
   if (j.night) {
-    const wolfVotes = Object.entries(j.night.wolfVotes || {}).map(([a, b]) => `${a}→${b}`).join(' ');
+    const wolfVotes = Object.entries(j.night.wolfVotes || {}).map(([a, b]) => `${label(a)} → ${label(b)}`).join(' ');
     info.push(el('div', { class: 'judge-line' }, [
       el('span', { class: 'jl-k' }, '狼人刀口'),
-      el('span', { class: 'jl-v' }, j.night.wolfTarget ? `${j.night.wolfTarget}号` : (wolfVotes || '未确认')),
+      el('span', { class: 'jl-v' }, j.night.wolfTarget ? `${label(j.night.wolfTarget)}` : (wolfVotes || '未确认')),
     ]));
     info.push(el('div', { class: 'judge-line' }, [
       el('span', { class: 'jl-k' }, '守卫'),
-      el('span', { class: 'jl-v' }, j.night.guardTarget ? `${j.night.guardTarget}号` : '未行动'),
+      el('span', { class: 'jl-v' }, j.night.guardTarget ? `${label(j.night.guardTarget)}` : '未行动'),
     ]));
     info.push(el('div', { class: 'judge-line' }, [
       el('span', { class: 'jl-k' }, '预言家'),
-      el('span', { class: 'jl-v' }, j.night.seerTarget ? `${j.night.seerTarget}号` : '未行动'),
+      el('span', { class: 'jl-v' }, j.night.seerTarget ? `${label(j.night.seerTarget)}` : '未行动'),
     ]));
-    const witch = [j.night.witchHeal ? `救 ${j.night.witchHeal}号` : null,
-      j.night.witchPoison ? `毒 ${j.night.witchPoison}号` : null].filter(Boolean).join(' · ');
+    const witch = [j.night.witchHeal ? `救 ${label(j.night.witchHeal)}` : null,
+      j.night.witchPoison ? `毒 ${label(j.night.witchPoison)}` : null].filter(Boolean).join(' · ');
     info.push(el('div', { class: 'judge-line' }, [
       el('span', { class: 'jl-k' }, '女巫'),
       el('span', { class: 'jl-v' }, witch || '未行动'),
@@ -49,17 +42,17 @@ export function judgePanel(s, emit) {
   if (j.voteState) {
     info.push(el('div', { class: 'judge-line wrap' }, [
       el('span', { class: 'jl-k' }, '放逐票'),
-      el('span', { class: 'jl-v' }, j.voteState.votes.map(([a, b]) => `${a}→${b || '弃'}`).join('  ') || '暂无'),
+      el('span', { class: 'jl-v' }, j.voteState.votes.map(([a, b]) => `${label(a)} → ${b ? label(b) : '弃票'}`).join('；') || '暂无'),
     ]));
   }
   if (j.sheriffState) {
     info.push(el('div', { class: 'judge-line wrap' }, [
       el('span', { class: 'jl-k' }, '警长票'),
-      el('span', { class: 'jl-v' }, j.sheriffState.votes.map(([a, b]) => `${a}→${b || '弃'}`).join('  ') || '暂无'),
+      el('span', { class: 'jl-v' }, j.sheriffState.votes.map(([a, b]) => `${label(a)} → ${b ? label(b) : '弃票'}`).join('；') || '暂无'),
     ]));
     info.push(el('div', { class: 'judge-line wrap' }, [
       el('span', { class: 'jl-k' }, '警上'),
-      el('span', { class: 'jl-v' }, j.sheriffState.onPodium.map((x) => `${x}号`).join('、') || '无'),
+      el('span', { class: 'jl-v' }, j.sheriffState.onPodium.map((x) => `${label(x)}`).join('、') || '无'),
     ]));
   }
 
@@ -69,7 +62,7 @@ export function judgePanel(s, emit) {
     change: (e) => { selectedSeat = e.target.value; },
   }, [
     el('option', { value: '' }, '选择座位'),
-    ...j.players.filter((p) => p.name).map((p) => el('option', { value: String(p.seat) }, `${p.seat}号 ${p.name || ''}`)),
+    ...j.players.filter((p) => p.name).map((p) => el('option', { value: String(p.seat) }, playerLabel(p))),
   ]);
   seatSel.value = selectedSeat; // option 已就绪，此时赋值有效
 
@@ -95,7 +88,8 @@ export function judgePanel(s, emit) {
         '👨‍⚖️ 法官面板',
         el('span', { class: 'pill gold', style: 'margin-left:8px' }, PHASE_NAME[j.phase] || j.phase),
       ]),
-      table,
+      el('p', { class: 'hint' }, '仅法官可见'),
+      roster,
       info.length ? el('div', { class: 'judge-info' }, info) : null,
     ]),
     el('div', { class: 'card glass col' }, [

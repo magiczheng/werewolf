@@ -1,19 +1,45 @@
 import { el } from '../ui.js';
 
+function voteGroup(seat, { voters, total }, nameAt) {
+  const abstained = !seat;
+  return el('li', { class: 'vote-group' }, [
+    el('span', { class: 'vote-voters' }, voters.sort((a, b) => a.seat - b.seat).flatMap((ballot, index) => [
+      el('span', { class: 'vote-voter' }, [
+        nameAt(ballot.seat),
+        !abstained && ballot.weight !== 1 ? el('small', { class: 'vote-weight' }, `（${ballot.weight}票）`) : null,
+        index < voters.length - 1 ? '、' : null,
+      ]),
+      el('wbr'),
+    ])),
+    el('span', { class: 'vote-arrow' }, '→'),
+    el('strong', { class: 'vote-target' }, abstained ? '弃票' : nameAt(seat)),
+    el('span', { class: 'vote-total' }, abstained ? `${voters.length} 人` : `${total} 票`),
+  ]);
+}
+
 export function replayPanel(s) {
   const children = [];
+  const currentNames = Object.fromEntries((s.players || []).map(p => [p.seat, p.name]));
   for (const round of [...(s.voteHistory || [])].reverse()) {
-    const totals = new Map(); let abstained = 0;
+    const namesBySeat = round.namesBySeat ?? currentNames;
+    const nameAt = seat => namesBySeat[seat] || '未知玩家';
+    const groups = new Map();
     for (const ballot of round.ballots) {
-      if (!ballot.target) abstained++;
-      else totals.set(ballot.target, (totals.get(ballot.target) || 0) + ballot.weight);
+      const target = ballot.target || 0;
+      if (!groups.has(target)) groups.set(target, { voters: [], total: 0 });
+      const group = groups.get(target);
+      group.voters.push(ballot);
+      group.total += ballot.weight;
     }
-    const summary = [...totals].sort((a, b) => b[1] - a[1]).map(([seat, votes]) => `${seat}号 ${votes}票`);
-    if (abstained) summary.push(`弃票 ${abstained}人`);
-    children.push(el('div', { class: 'vote-record' }, [
+    const abstentions = groups.get(0);
+    groups.delete(0);
+    const rows = [...groups]
+      .sort(([seatA, groupA], [seatB, groupB]) => groupB.total - groupA.total || seatA - seatB)
+      .map(([seat, group]) => voteGroup(seat, group, nameAt));
+    if (abstentions) rows.push(voteGroup(0, abstentions, nameAt));
+    children.push(el('section', { class: 'vote-record' }, [
       el('h3', { class: 'small' }, `第 ${round.day} 天 · ${round.kind}`),
-      el('p', { class: 'vote-result' }, summary.join(' · ') || '本轮无有效票'),
-      el('div', { class: 'cfg-chips' }, round.ballots.map(b => el('span', { class: 'cfg-chip' }, `${b.seat || '—'}号 → ${b.target ? b.target + '号' : '弃票'}${b.weight !== 1 ? `（${b.weight}票）` : ''}`))),
+      rows.length ? el('ul', { class: 'vote-groups', role: 'list' }, rows) : el('p', { class: 'hint' }, '本轮无有效票'),
     ]));
   }
   if (!s.voteHistory?.length) children.push(el('p', { class: 'hint' }, '本局尚无已完成的投票。投票结束后在这里查看票型。'));

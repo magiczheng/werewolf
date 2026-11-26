@@ -1,10 +1,10 @@
 // 大厅：房间号 / 二维码 / 座位 / 本局配置（只读）/ 开始
+import { seatLabel } from '../playerLabel.js';
 import { el, toast, confirmDialog, copyText } from '../ui.js';
 import { net, store } from '../net.js';
 import { seatGrid } from '../components/seats.js';
 import { roomControls, firstGameGuide } from '../components/roomControls.js';
 import { roleArt } from '../components/roleArt.js';
-import { pageIntro } from '../components/atmosphere.js';
 import { ROLE_META, RULES_LABELS } from '../constants.js';
 
 // 二维码按房间号缓存：每次推送都重新请求会生成一次二维码，
@@ -26,6 +26,7 @@ export function renderLobby(root) {
     onSit: (seat) => net.emit('sit', { seat }).catch((e) => toast(e.message, true)),
     showRole: false,
   });
+  seats.classList.add('felt-table');
 
   // 已入座的人可以「离开座位」：把位置让出来后重新选，或让别人坐。
   // 点了另一个空位也能直接换过去（引擎会自动让出旧座位），这里只是显式的入口。
@@ -37,7 +38,7 @@ export function renderLobby(root) {
       el('span', { class: 'pill', style: 'margin-left:8px' }, `${occupied}/${s.settings.playerCount}`),
     ]),
     el('div', { class: 'seating-progress', role: 'progressbar', 'aria-label': '入座进度', 'aria-valuenow': occupied, 'aria-valuemin': 0, 'aria-valuemax': s.settings.playerCount }, el('span', { style: `width:${occupied / s.settings.playerCount * 100}%` })),
-    el('p', { class: 'hint seating-intro' }, me?.seat ? `你已坐在 ${me.seat} 号，等待朋友入座。` : '每个人都需要选座，角色将在开局后随机分配。'),
+    el('p', { class: 'hint seating-intro' }, me?.seat ? `${seatLabel(s.players, me.seat)} 已入座，等待朋友加入。` : '每个人都需要选座，角色将在开局后随机分配。'),
     seats,
     el('div', { class: 'seating-footer' }, [
       el('p', { class: 'hint' }, empty ? `还有 ${empty} 个空位 · ${me?.seat ? '点击空位即可换座' : '选择一个喜欢的位置'}` : '全员已入座，准备开始'),
@@ -103,10 +104,13 @@ export function renderLobby(root) {
   const parts = [
     el('div', { class: 'lobby-head' }, [
       el('div', { class: 'lobby-brand' }, [el('span', { class: 'lobby-moon', 'aria-hidden': 'true' }, '☾'), el('span', {}, '月夜俱乐部')]),
-      el('button', { class: 'lobby-code', type: 'button', click: copyLink, 'aria-label': `复制房间 ${code} 的邀请链接` }, [el('span', {}, '房间'), el('strong', {}, code)]),
+      el('button', { class: 'lobby-code', type: 'button', click: copyLink, 'aria-label': `复制房间 ${code} 的邀请链接` }, [el('span', {}, '房间号'), el('strong', {}, code)]),
       el('button', { class: 'link-btn', type: 'button', click: leaveRoom }, '退出'),
     ]),
-    pageIntro('BEFORE THE MOONRISE', '好故事，等人齐。', '选个座位，邀请朋友，共赴今晚的月夜。'),
+    el('div', { class: 'lobby-intro' }, [
+      el('h1', { class: 'screen-title lobby-title' }, '房间大厅'),
+      el('button', { class: 'btn-ghost lobby-invite', type: 'button', click: copyLink }, '邀请好友'),
+    ]),
     seatCard,
     shareCard,
   ];
@@ -114,11 +118,9 @@ export function renderLobby(root) {
   // ---------- 开始按钮 ----------
   const permitted = !!(me?.isHost || me?.isJudge);
   const canStart = !!(permitted && s.canStart && !s.canStart.error);
-  const startLabel = !permitted ? '等待房主开始游戏' : canStart ? '开始游戏' : ((s.canStart && s.canStart.error) || '开始游戏');
   parts.push(el('div', { class: 'lobby-launch' + (canStart ? ' is-ready' : ' is-waiting') }, [
-    el('div', { class: 'launch-caption' }, [el('span', { class: 'launch-status-dot' + (canStart ? ' ready' : '') }), el('span', {}, canStart ? '所有席位已就绪' : `已入座 ${occupied} / ${s.settings.playerCount}`), el('span', { class: 'launch-detail' }, empty ? `还差 ${empty} 位朋友` : '等待房主开局')]),
-    el('button', { class: 'btn-primary btn-big sticky-cta', type: 'button', disabled: !canStart, click: startGame }, startLabel),
-    !canStart ? el('button', { class: 'btn-primary lobby-invite', type: 'button', click: copyLink }, '邀请朋友') : null,
+    el('div', { class: 'launch-caption' }, [el('span', { class: 'launch-status-dot' + (canStart ? ' ready' : '') }), el('span', {}, canStart ? '所有席位已就绪' : `已入座 ${occupied} / ${s.settings.playerCount}`), canStart ? null : el('span', { class: 'launch-detail' }, empty ? `还差 ${empty} 位朋友` : (permitted && s.canStart?.error) || '等待房主开局')]),
+    permitted ? el('button', { class: 'btn-primary btn-big sticky-cta', type: 'button', disabled: !canStart, click: startGame }, '开始游戏') : null,
   ]));
 
   // ---------- 本局配置（只读）----------

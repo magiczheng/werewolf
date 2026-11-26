@@ -14,21 +14,18 @@
   <script type="module">
     import { el } from '/js/ui.js';
     import { brand } from '/js/components/brand.js';
-    import { pageIntro } from '/js/components/atmosphere.js';
     import { roleArt } from '/js/components/roleArt.js';
     import { ROLE_META, ROLE_KEYS } from '/js/constants.js';
     document.getElementById('app').appendChild(el('div', { class: 'view rolebook-view' }, [
       el('header', { class: 'rolebook-head' }, [brand({ compact: true, sub: 'WEREWOLF · CHARACTER ARCHIVES' }), el('a', { class: 'role-catalog-link', href: '/' }, '返回聚会助手 ↗')]),
-      pageIntro('THE MOONLIT CHARACTERS / VOL. 01', '月光之下，各有身份。', '八位角色，八种命运。认识这场月夜游戏里的每一位登场者。'),
-      el('section', { class: 'role-gallery', 'aria-label': '全部角色' }, ROLE_KEYS.map((key, i) => el('a', { class: 'role-gallery-card', href: `/images/roles/${key}.jpg`, target: '_blank', rel: 'noopener', 'aria-label': `查看${ROLE_META[key].name}原画` }, [
+      el('h2', { class: 'screen-title' }, '角色图鉴'),
+      el('section', { class: 'role-gallery', 'aria-label': '全部角色' }, ROLE_KEYS.map(key => el('a', { class: 'role-gallery-card', href: `/images/roles/${key}.jpg`, target: '_blank', rel: 'noopener', 'aria-label': `查看${ROLE_META[key].name}原画` }, [
         roleArt(key, { className: 'role-gallery-art', full: true }),
         el('div', { class: 'role-gallery-caption' }, [
-          el('div', { class: 'role-gallery-number' }, `CHARACTER / ${String(i + 1).padStart(2, '0')}`),
           el('h3', {}, ROLE_META[key].name),
           el('p', {}, ROLE_META[key].sub),
         ]),
       ]))),
-      el('p', { class: 'hint' }, 'WEREWOLF · SOCIAL CLUB　/　月夜角色档案'),
     ]));
   </script>
 </body>

@@ -61,18 +61,18 @@ export function showPeek(s) {
  * 只绑定指针事件：pointerdown/up 是一对，若再挂 click 兜底，
  * 鼠标下会变成 down(显示) → up(隐藏) → click(又显示)，浮层卡在打开状态。
  */
-export function peekButton(s) {
+export function peekButton(readState) {
   const btn = el('button', {
     class: 'peek-btn', type: 'button', 'aria-label': '按住查看身份牌',
-    pointerdown: (e) => { e.preventDefault(); showPeek(s); },
+    pointerdown: (e) => { e.preventDefault(); showPeek(readState()); },
     contextmenu: (e) => e.preventDefault(), // 长按不要弹出系统菜单
     keydown: (e) => {
-      if ((e.key === ' ' || e.key === 'Enter') && !isPeeking()) { e.preventDefault(); showPeek(s); }
+      if ((e.key === ' ' || e.key === 'Enter') && !isPeeking()) { e.preventDefault(); showPeek(readState()); }
     },
     keyup: (e) => { if (e.key === ' ' || e.key === 'Enter') hidePeek(); },
   }, [
     el('span', { class: 'peek-icon' }, '👁'),
-    el('span', { class: 'peek-label' }, '身份'),
+    el('span', { class: 'peek-label' }, '按住看身份'),
   ]);
   return btn;
 }

@@ -1,5 +1,6 @@
 import { activityFor } from './activity.js';
 import { randomUUID } from 'node:crypto';
+import { playerLabel } from '../public/js/playerLabel.js';
 import { normalizeRules } from '../public/js/gameRules.js';
 // 狼人杀游戏引擎 —— 纯逻辑、无 I/O，可单测。
 // 与 socket 层的唯一接口：onChange(room) 回调（状态变化时通知外部广播快照）。
@@ -162,11 +163,11 @@ export class Room {
     };
   }
 
-  _news(text) {
+  _news(text, details = {}) {
     // id 单调递增：客户端靠它判断「这条播报是不是已经念过了」。
     // 不能用数组下标——播报上限 40 条，满了会从头部裁掉，下标会整体错位。
     this.newsSeq = (this.newsSeq || 0) + 1;
-    const entry = { seq: ++this.historySeq, id: this.newsSeq, t: Date.now(), day: this.day, phase: this.phase, text };
+    const entry = { seq: ++this.historySeq, id: this.newsSeq, t: Date.now(), day: this.day, phase: this.phase, text, ...details };
     this.news.push(entry);
     this.history.push(entry);
     if (this.history.length > 1000) this.history.shift();
@@ -175,7 +176,7 @@ export class Room {
 
   _recordAction(p, action, target, detail = '') {
     this.privateHistory.push({ seq: ++this.historySeq, t: Date.now(), day: this.day, phase: this.phase,
-      text: `${p.seat}号 ${ROLES[p.role].name} · ${action}${target ? ' ' + target + '号' : ''}${detail}` });
+      text: `${this._labelSeat(p.seat)} ${ROLES[p.role].name} · ${action}${target ? ' ' + this._labelSeat(target) : ''}${detail}` });
     if (this.privateHistory.length > 1000) this.privateHistory.shift();
   }
 
@@ -189,6 +190,10 @@ export class Room {
     if (!seat || seat < 1 || seat > this.settings.playerCount) return null;
     const pid = this.seatMap[seat];
     return pid ? this.players.get(pid) : null;
+  }
+
+  _labelSeat(seat) {
+    return playerLabel(this._playerAt(seat), seat);
   }
 
   _seatOf(playerId) {
@@ -451,8 +456,7 @@ export class Room {
   /**
    * 进入阶段时向全场播报一句，相当于线下法官的口播（「天黑请闭眼，狼人请睁眼…」）。
    *
-   * 措辞只提「轮到谁行动」，**不提座位号**——说「3 号请睁眼」等于当众报出 3 号是什么角色。
-   * 例外是遗言/开枪/警徽移交：那些座位号本来就公开（人已经出局或在台上），带上更清楚。
+   * 隐藏身份的阶段只播报角色，不点名玩家。公开竞选发言、遗言和警徽移交使用昵称和座位号。
    */
   _announcePhase(phase, extra = {}) {
     const seat = extra.seat;
@@ -474,7 +478,7 @@ export class Room {
       case PHASE.SHERIFF_DECLARE:
         this._news('警长竞选开始，请选择是否上警'); break;
       case PHASE.SHERIFF_SPEECH:
-        this._news(extra.speakerSeat ? `${extra.speakerSeat}号 开始竞选发言` : '警上候选人依次发言'); break;
+        this._news(extra.speakerSeat ? `${this._labelSeat(extra.speakerSeat)} 开始竞选发言` : '警上候选人依次发言'); break;
       case PHASE.SHERIFF_VOTE:
         this._news('警下玩家请投票选出警长'); break;
       case PHASE.SHERIFF_PK:
@@ -486,12 +490,12 @@ export class Room {
       case PHASE.VOTE_PK:
         this._news('放逐投票平票，请重新投票'); break;
       case PHASE.LAST_WORDS:
-        this._news(seat ? `${seat}号 发表遗言` : '请发表遗言'); break;
+        this._news(seat ? `${this._labelSeat(seat)} 发表遗言` : '请发表遗言'); break;
       case PHASE.HUNTER_SHOOT:
         // 不报座位号：猎人的身份是暗的，说「3 号请开枪」等于当众公布 3 号是猎人
         this._news('猎人请选择是否开枪'); break;
       case PHASE.SHERIFF_HANDOFF:
-        this._news(seat ? `${seat}号 请移交警徽` : '请移交警徽'); break;
+        this._news(seat ? `${this._labelSeat(seat)} 请移交警徽` : '请移交警徽'); break;
       default: break;
     }
   }
@@ -525,7 +529,7 @@ export class Room {
         // 未在限定时间内移交警徽 → 默认撕警徽
         if (!this.phaseState.done && this.phaseState.seat && this.sheriff === this.phaseState.seat) {
           this.sheriff = null;
-          this._news(`警长 ${this.phaseState.seat}号 未移交，警徽作废`);
+          this._news(`警长 ${this._labelSeat(this.phaseState.seat)} 未移交，警徽作废`);
         }
         this._processQueue(); break;
       case PHASE.SHERIFF_DECLARE: this._enterSheriffSpeech(); break;
@@ -843,7 +847,7 @@ export class Room {
       if (!p || !p.alive) continue;   // 幂等：已经因其它原因出局的人不重复结算
       p.alive = false;
       this.totalDeaths++;
-      this._news(`${d.seat}号 在昨夜死亡`);
+      this._news(`${this._labelSeat(d.seat)} 在昨夜死亡`, { nightDeathSeat: d.seat });
       this._queueDeathEvents(d);
     }
   }
@@ -996,7 +1000,7 @@ export class Room {
       ps.speakerSeat = next;
       ps.candidates = cands;
       this.phaseId = randomUUID();
-      this._news(`${next}号 开始竞选发言`);
+      this._news(`${this._labelSeat(next)} 开始竞选发言`);
       this.touch();
       return;
     }
@@ -1065,7 +1069,7 @@ export class Room {
 
   _electSheriff(seat) {
     this.sheriff = seat;
-    this._news(`${seat}号 当选警长`);
+    this._news(`${this._labelSeat(seat)} 当选警长`);
     this.sheriffState = null;
     this._finishSheriffElection();
   }
@@ -1101,7 +1105,7 @@ export class Room {
     spoken.delete(seat);
     this.phaseState.spoken = [...spoken]; this.phaseState.speakerSeat = seat;
     this.phaseId = randomUUID();
-    this._news(`${seat}号 开始白天发言`); this.touch();
+    this._news(`${this._labelSeat(seat)} 开始白天发言`); this.touch();
     return { ok: true };
   }
 
@@ -1110,7 +1114,7 @@ export class Room {
     if (this.phase !== PHASE.DAY_TALK || !p?.alive || this.phaseState.speakerSeat !== p.seat) return { error: '当前未轮到你发言' };
     this.phaseState.spoken = [...new Set([...(this.phaseState.spoken || []), p.seat])];
     this.phaseState.speakerSeat = null; this.phaseId = randomUUID();
-    this._news(`${p.seat}号 已结束白天发言`); this.touch();
+    this._news(`${this._labelSeat(p.seat)} 已结束白天发言`); this.touch();
     return { ok: true };
   }
 
@@ -1159,10 +1163,17 @@ export class Room {
     return voters.every(v => this.voteState.votes.has(v.playerId));
   }
 
+  _seatedNames() {
+    return Object.fromEntries([...this.players.values()].filter(p => p.seat).map(p => [p.seat, p.name]));
+  }
+
   _recordVotes(kind, votes, weighted) {
-    this.voteHistory.push({ day: this.day, kind, t: Date.now(), ballots: [...votes].map(([pid, target]) => ({
-      seat: this._seatOf(pid), target, weight: weighted ? this._sheriffWeight(this.players.get(pid)) / 2 : 1,
-    })) });
+    this.voteHistory.push({
+      day: this.day, kind, t: Date.now(), namesBySeat: this._seatedNames(),
+      ballots: [...votes].map(([pid, target]) => ({
+        seat: this._seatOf(pid), target, weight: weighted ? this._sheriffWeight(this.players.get(pid)) / 2 : 1,
+      })),
+    });
     if (this.voteHistory.length > 100) this.voteHistory.shift();
   }
 
@@ -1201,7 +1212,7 @@ export class Room {
     if (winners.length === 1) { this._doExile(winners[0]); return; }
     this.voteState.pkCandidates = winners;
     this.voteState.votes.clear(); // 进入 PK 需重新投票
-    this._news(`${winners.join('、')}号 平票，进入 PK`);
+    this._news(`${winners.map(seat => this._labelSeat(seat)).join('、')} 平票，进入 PK`);
     this._startPhase(PHASE.VOTE_PK, { pkCandidates: winners });
     this._maybeComplete(); // All living players may be PK candidates: no eligible voter must not deadlock.
   }
@@ -1226,11 +1237,11 @@ export class Room {
     const p = this._playerAt(seat);
     if (!p) return;
     if (p.idiotFlipped) return;
-    this._news(`${seat}号 被放逐`);
+    this._news(`${this._labelSeat(seat)} 被放逐`);
     if (p.role === 'idiot' && !p.idiotFlipped) {
       p.idiotFlipped = true;
       p.revealed = true;
-      this._news(`白痴 ${seat}号 翻牌免死，失去投票权`);
+      this._news(`白痴 ${this._labelSeat(seat)} 翻牌免死，失去投票权`);
       this.pendingDay = [];
       this.afterQueue = 'night';
       if (this._checkVictory()) { this.touch(); return; }
@@ -1296,8 +1307,8 @@ export class Room {
     this.totalDeaths += tp ? 2 : 1;
 
     this._news(tp
-      ? `白狼王 ${p.seat}号 自爆，带走 ${victim}号，当天白天结束`
-      : `${p.seat}号 狼人自爆，当天白天结束`);
+      ? `白狼王 ${this._labelSeat(p.seat)} 自爆，带走 ${this._labelSeat(victim)}，当天白天结束`
+      : `${this._labelSeat(p.seat)} 狼人自爆，当天白天结束`);
 
     // 投票作废：正在进行的放逐投票（或警长竞选）直接丢弃，不公布结果
     this.voteState = null;
@@ -1331,7 +1342,7 @@ export class Room {
       const tp = this._playerAt(target);
       tp.alive = false;
       this.totalDeaths++;
-      this._news(`猎人 ${p.seat}号 开枪，带走 ${target}号`);
+      this._news(`猎人 ${this._labelSeat(p.seat)} 开枪，带走 ${this._labelSeat(target)}`);
       p.revealed = true;
       // 注意：这里**不要**覆盖 afterQueue、也不要清空 pendingDay。
       //
@@ -1343,7 +1354,7 @@ export class Room {
       this._queueDeathEvents({ seat: target, cause: 'hunter' });
       if (this._checkVictory()) { this.phaseState.done = true; this.touch(); return { ok: true }; }
     } else {
-      this._news(`猎人 ${p.seat}号 选择不开枪`);
+      this._news(`猎人 ${this._labelSeat(p.seat)} 选择不开枪`);
       p.revealed = true;
     }
     this.phaseState.done = true;
@@ -1363,10 +1374,10 @@ export class Room {
       const target = Number(payload.target);
       if (!this._validTarget(target)) return { error: '目标无效' };
       this.sheriff = target;
-      this._news(`警长 ${p.seat}号 将警徽移交给 ${target}号`);
+      this._news(`警长 ${this._labelSeat(p.seat)} 将警徽移交给 ${this._labelSeat(target)}`);
     } else if (mode === 'tear') {
       this.sheriff = null;
-      this._news(`警长 ${p.seat}号 撕毁警徽`);
+      this._news(`警长 ${this._labelSeat(p.seat)} 撕毁警徽`);
     } else {
       return { error: '无效操作' };
     }
@@ -1470,7 +1481,7 @@ export class Room {
         // 历史判断放在有效性之前：命中历史时「已经查验过」远比「目标无效」说得清楚
         // （被验过的人可能当晚已经死了，先报「目标无效」会让人以为是选错了人）
         if (p.seerHistory.some(h => h.seat === target)) {
-          return { error: `${target}号已经查验过了，换一个人` };
+          return { error: `${this._labelSeat(target)}已经查验过了，换一个人` };
         }
         if (!this._validTarget(target, { exclude: [seat] })) return { error: '目标无效' };
         n.seerTarget = target;

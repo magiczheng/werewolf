@@ -1,4 +1,5 @@
 import { el, confirmDialog } from '../ui.js';
+import { playerLabel, seatLabel } from '../playerLabel.js';
 
 export function targetPicker(targets, hint, onPick, opts = {}) {
   let selected = opts.selected || 0;
@@ -25,7 +26,7 @@ export function targetPicker(targets, hint, onPick, opts = {}) {
     try {
       const confirmed = opts.confirmPick
         ? await opts.confirmPick(seat, returnFocus)
-        : !opts.confirm || await confirmDialog('确认投票？', seat ? `投给 ${seat}号，提交后不可修改。` : '本轮弃票，提交后不可修改。', { danger: false, confirmText: '确认投票', returnFocus });
+        : !opts.confirm || await confirmDialog('确认投票？', seat ? `投给 ${seatLabel(targets, seat)}，提交后不可修改。` : '本轮弃票，提交后不可修改。', { danger: false, confirmText: '确认投票', returnFocus });
       if (!confirmed) {
         selected = previous; return { cancelled: true };
       }
@@ -42,7 +43,7 @@ export function targetPicker(targets, hint, onPick, opts = {}) {
     }
   }
   for (const t of targets) grid.appendChild(el('button', {
-    class: 'target-chip', type: 'button', 'data-seat': t.seat, 'aria-label': `${t.seat}号 ${t.name}`, title: `${t.seat}号 ${t.name}`,
+    class: 'target-chip', type: 'button', 'data-seat': t.seat, 'aria-label': playerLabel(t), title: playerLabel(t),
     click: () => submit(t.seat, () => onPick(t.seat)),
   }, [el('span', { class: 'target-avatar', 'aria-hidden': 'true' }, [...String(t.name || '')][0] || '·'), el('span', { class: 't-seat' }, `${t.seat}号`), el('span', { class: 't-name' }, t.name)]));
   paint();
