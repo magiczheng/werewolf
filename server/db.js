@@ -34,5 +34,8 @@ export function openDb(file) {
   return db;
 }
 
-// 单例：socket.js 使用；测试可直接 openDb(':memory:')。
-export const db = openDb(DB_PATH);
+// 只有启动默认服务时才打开默认库，使用独立数据库的测试不触碰该文件。
+let defaultDb;
+export function getDefaultDb() {
+  return defaultDb ??= openDb(DB_PATH);
+}

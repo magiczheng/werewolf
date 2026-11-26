@@ -477,18 +477,20 @@ describe('结算页', () => {
     me: meFor('villager', { isHost }),
   });
 
-  test('房主看到「回到房间」与「退出房间」两个入口', () => {
+  test('房主能再来一局、查看复盘或退出房间', () => {
     const root = renderAndAssert('over-host', overState(true));
     const btns = findByClass(root, 'btn-primary').concat(findByClass(root, 'btn-ghost'));
     const labels = btns.map(textOf).join(' | ');
-    assert.match(labels, /回到房间/, '房主应有回到房间的按钮');
+    assert.match(labels, /再来一局/, '房主应有开启下一局的按钮');
+    assert.match(labels, /查看复盘/, '应有查看复盘的按钮');
     assert.match(labels, /退出房间/, '应有退出房间的按钮');
   });
 
-  test('普通玩家不显示「回到房间」（由房主发起），但能自己退出', () => {
+  test('普通玩家能查看复盘和退出，下一局由房主发起', () => {
     const root = renderAndAssert('over-player', overState(false));
     const labels = findByClass(root, 'btn-primary').concat(findByClass(root, 'btn-ghost')).map(textOf).join(' | ');
-    assert.ok(!/回到房间/.test(labels), '普通玩家不该有回到房间按钮');
+    assert.doesNotMatch(labels, /再来一局/, '普通玩家不能直接开启下一局');
+    assert.match(labels, /查看复盘/, '普通玩家应能查看复盘');
     assert.match(labels, /退出房间/, '普通玩家也应能退出');
     assert.match(textOf(root), /等待房主/, '应提示在等房主');
   });

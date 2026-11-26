@@ -4,7 +4,7 @@ import { isIP } from 'node:net';
 import { Server } from 'socket.io';
 import { Room, buildSettings } from './engine.js';
 import { ROOM_IDLE_TTL, SKIP_ROLE_REVEAL, TRUSTED_PROXIES, MAX_ROOMS } from './config.js';
-import { db } from './db.js';
+import { getDefaultDb } from './db.js';
 import { createAuth, sanitizeName } from './auth.js';
 import { createRoomStore, serializeRoom, restoreRoom } from './roomStore.js';
 
@@ -26,7 +26,7 @@ export function clientIP(socket, trustedProxies = TRUSTED_PROXIES) {
 }
 
 export function initSocket(server, opts = {}) {
-  const database = opts.db || db;
+  const database = opts.db || getDefaultDb();
   const auth = createAuth(database, opts.auth || {});
   const store = createRoomStore(database);
   const rooms = new Map();

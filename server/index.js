@@ -11,7 +11,7 @@ import {
   TEST_ACCOUNT_COUNT, TEST_ACCOUNT_PASSWORD, testAccountEmail,
 } from './config.js';
 import { initSocket } from './socket.js';
-import { db } from './db.js';
+import { getDefaultDb } from './db.js';
 import { seedAndLog } from './seed.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -19,6 +19,7 @@ const INDEX_HTML = path.join(__dirname, '../public/index.html');
 
 const app = express();
 const server = http.createServer(app);
+const db = getDefaultDb();
 
 // 测试账号列表：只在种子开启时下发给前端，供登录页做「一键切账号」。
 // 内容由配置推导（邮箱规则固定），不依赖种子是否已跑完——服务端要先 listen
